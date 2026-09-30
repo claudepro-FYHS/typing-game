@@ -1,2 +1,194 @@
-# typing-game
-A good Typing game
+# 钢弹击字 Mecha Strike Typer
+
+一个 3D 机甲英文打字游戏。学生打出敌机上的英文单字就能开火击落敌机，每一关最后有 Boss。
+
+- **游戏网址：** https://claudepro-fyhs.github.io/typing-game/
+- **排行榜：** 游戏上方的 **LEADERBOARD**
+- **老师后台：** 游戏上方的 **TEACHER**（密码在 Google Sheet 里设定）
+
+---
+
+## 文件说明
+
+| 文件 | 用途 | 老师需要改吗？ |
+|---|---|---|
+| `index.html` | 整个游戏，包括排行榜和老师后台 | 不用 |
+| `config.js` | 贴 Apps Script 网址 | **第一次设置时贴一次** |
+| `apps-script/Code.gs` | 贴进 Google Apps Script 的接收端程序 | 不用（照步骤复制贴上） |
+| `lib/three.min.js` | 3D 引擎（Three.js，MIT 授权） | 不用 |
+
+---
+
+## 第一次设置（照顺序做，约 30 分钟）
+
+### 步骤 A：Google Cloud Client ID（让学生可以用学校账号登入）
+
+> 用**学校账号**登入来做。
+
+1. 打开 https://console.cloud.google.com/，左上角按项目选择框，然后按 **NEW PROJECT**。
+   - 名字填 `mecha-typer`，按 **CREATE**，建好后 **SELECT PROJECT**。
+2. 在顶部搜索栏搜 **Google Auth Platform**，按 **Get started**：
+   - App name 填 `Mecha Strike Typer`
+   - Support email 选您的邮箱
+   - Audience 选 **Internal**
+   - Contact email 填您的邮箱
+   - 打勾同意后按 **Create**
+3. 左边选 **Clients**，按 **+ Create client**：
+   - Application type 选 **Web application**
+   - **Authorized JavaScript origins** 按 **+ Add URI**，填 `https://claudepro-fyhs.github.io`
+   - 按 **Create**
+4. 复制画面上的 **Client ID**（格式像 `xxxx.apps.googleusercontent.com`），步骤 B 会用到。
+
+### 步骤 B：建立 Google Sheet 和 Apps Script（收成绩的地方）
+
+1. 到 Google Drive，按 **新增 → Google 试算表**，命名为 `钢弹击字 成绩`。
+2. 在试算表上方选单按 **扩充功能（Extensions）→ Apps Script**。
+3. 在新开的 Apps Script 页面：
+   1. 把 `Code.gs` 里面原本的内容**全部删掉**。
+   2. 打开 https://github.com/claudepro-FYHS/typing-game/blob/main/apps-script/Code.gs，按右上角的 **Copy raw file** 图示（两个方块），这样就复制了全部内容。
+   3. 回到 Apps Script 页面，贴上。
+   4. 按 💾（Save）保存。
+4. 在上方工具列的函数选单（在「Debug」旁边）选 **setup**，然后按 **▶ Run**。
+5. 第一次运行会跳出授权窗口：
+   1. 按 **Review permissions**，然后选您的学校账号。
+   2. 如果看到「Google hasn't verified this app」，按 **Advanced**，再按 **Go to … (unsafe)**。这是您自己写的程序，所以没有问题。
+   3. 按 **Allow**。
+   4. 下方执行记录出现 `Setup done. 设置完成！` 就成功了。
+6. 回到试算表，会看到多了 **Scores、Players、Settings、BannedWords** 四个分页。在 **Settings** 分页改 B 栏：
+   - **Classes**：您的班级，用逗号分隔，例如 `1A, 1B, 1C, 2A, 2B`
+   - **TeacherPassword**：老师后台密码。**一定要改掉**默认的 `change-me-2026`。
+   - **GoogleClientId**：贴上步骤 A 复制的 Client ID
+7. 发布成网页应用：回到 Apps Script 页面，按右上角 **部署（Deploy）→ 新增部署作业（New deployment）**。
+   1. 按「选取类型」旁边的 ⚙ 齿轮，选 **网页应用程式（Web app）**。
+   2. 说明：填 `v1`
+   3. 执行身分（Execute as）：选 **我（Me）**
+   4. 谁可以存取（Who has access）：选 **所有人（Anyone）**
+   5. 按 **部署（Deploy）**，复制 **网页应用程式网址**（结尾是 `/exec`）。
+
+> ❗ 如果「谁可以存取」没有 **所有人（Anyone）** 这个选项，只有「foonyew.edu.my 内的所有人」，那是学校管理员锁住了。
+> 选了「foonyew.edu.my 内的所有人」的话，游戏网页会连不上。请学校 IT 开放，或者告诉我改用别的方法。
+
+### 步骤 C：把网址贴进 `config.js`
+
+1. 打开 https://github.com/claudepro-FYHS/typing-game/blob/main/config.js
+2. 按右上角的 ✏️（Edit this file）。
+3. 把步骤 B-7 的网址贴在 `APPS_SCRIPT_URL: ""` 的**两个引号中间**，例如：
+   ```js
+   APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycb.../exec",
+   ```
+4. 按右上角绿色的 **Commit changes…**，再按一次 **Commit changes**。
+
+### 步骤 D：开启 GitHub Pages（让网址可以打开）
+
+1. 打开 https://github.com/claudepro-FYHS/typing-game/settings/pages
+2. **Source** 选 **Deploy from a branch**。
+3. **Branch** 选 **main**，资料夹选 **/ (root)**，按 **Save**。
+4. 等 1–3 分钟，打开 https://claudepro-fyhs.github.io/typing-game/ 就能玩了。
+   - 之后每次改 `config.js`，也要等 1–3 分钟才会更新。
+
+### 步骤 E：测试
+
+1. 打开游戏网址，按 **Sign in with Google**，用学校账号登入。
+2. 填好班级、座号、名字、花名。
+3. 玩一局，至少 20 秒。
+4. 结果画面出现 **✔ Saved to your class record**，Google Sheet 的 **Scores** 分页就会多一行成绩。
+5. 按上方 **TEACHER**，输入密码，确认老师后台看得到数据。
+
+---
+
+## 以后怎么改设定
+
+全部都在 Google Sheet 里改，**不用碰 GitHub**。改完学生重新整理网页就生效。
+
+| 想改什么 | 去哪里改 |
+|---|---|
+| 班级列表 | **Settings** 分页 → `Classes`，用逗号分隔 |
+| 老师后台密码 | **Settings** 分页 → `TeacherPassword` |
+| 排行榜最低准确率 | **Settings** 分页 → `LeaderboardMinAccuracy`（默认 80） |
+| 学生的不当花名 | **Players** 分页 → 直接改 `Nickname` 那一格 |
+| 加屏蔽词 | **BannedWords** 分页 → A 栏每行加一个字 |
+| 学生填错班级或名字 | **Players** 分页直接改。之后的新成绩会用新资料；已经记录的旧成绩要在 **Scores** 分页自己改 |
+| 删除测试成绩 | **Scores** 分页整行删掉 |
+
+> 只有在 `Code.gs` 程序本身有更新时，才需要重新部署：
+> 1. 贴上新的程序，按保存。
+> 2. 按 **部署 → 管理部署作业**，按 ✏️。
+> 3. 「版本」选 **新版本**，按 **部署**。
+>
+> 这样网址不会变，不用改 `config.js`。
+
+---
+
+## 游戏说明（给学生）
+
+- 打出敌机上的单字就会锁定并开火，整个字打完就能击落。
+- 敌机撞到自己会扣 1 ♥，♥ 扣完游戏就结束。每打倒一个 Boss 会补回 1 ♥。
+- 按键：
+  - `Backspace`：放弃目前锁定的目标
+  - `Esc`：暂停
+  - `1`：💣 清屏
+  - `2`：❄️ 冻结敌人 5 秒
+  - `3`：🛡️ 护盾（挡一次攻击）
+- 用 **Seraph Zero** 时，连续打对 5 个字后按 `Space`，可以发射双管光束炮。
+- 机体只是玩法不同，没有「越贵越强」：
+  - 血量都在 4–6 ♥ 之间
+  - 血多的机体金币收入较少
+  - 金币只能买机体，不能买道具
+
+| 机体 | 价钱 | ♥ | 优点 | 缺点 |
+|---|---|---|---|---|
+| Vanguard | 免费 | 5 | 平衡型 | — |
+| Bastion | 300 | 6 | 最耐打 | 金币收入 −20% |
+| Crimson Striker | 300 | 4 | 道具掉率 ×1.8 | 血较少 |
+| Phantom | 500 | 5 | Boss 导弹慢 25% | 金币收入 −10% |
+| Seraph Zero（飞翼风格） | 1200 | 4 | 天使羽翼 + 双管光束炮 | 血最少 |
+
+---
+
+## 成绩怎么算
+
+- **WPM**：打对的字母数 ÷ 5 ÷ 实际作战分钟数。关卡开场动画和过关画面不算在时间内。
+- **准确率**：打对的按键数 ÷ 全部按键数。
+- **坚持时间**：从开始到结束的秒数，暂停的时间不算。
+- 玩不到 20 秒或按键少于 20 下的局，不会记录。
+
+**排行榜**
+- 每个难度分开排，分「本周」和「全部时间」两个榜。
+- 以 WPM 排名，准确率要达到 80% 以上才会上榜。
+- 每个学生只列最佳的一次，而且只显示花名。
+- 「本周」按马来西亚时间计算，从星期一 00:00 开始。
+
+**老师后台**
+- 每班平均速度
+- 每位学生的最佳成绩和进步幅度（最近 3 局平均 − 最早 3 局平均）
+- 各班最常打错的 20 个单字
+
+---
+
+## 隐私与安全
+
+- 老师密码只存在您的 Google Sheet 里，由 Apps Script 检查，**不在公开的网页代码里**。
+- 排行榜只送出花名、WPM、准确率和日期，**不会送出真实姓名或邮箱**。
+- 学生登入时，Apps Script 会向 Google 核对登入凭证，确认是 `@foonyew.edu.my` 账号才接受成绩。所以别人就算知道接收网址，也没办法冒充学生交成绩。
+- 学生的登入状态只保存在当前的浏览器分页，关掉浏览器就会自动登出。学校电脑是共用的，还是请提醒学生玩完按 **Sign out**。
+- 如果成绩送出失败（例如网络断线），游戏照常显示成绩，并把成绩暂存在这台电脑。12 小时内下次打开游戏时会自动补送。
+
+---
+
+## 常见问题
+
+**学生看到 "Can't reach the school server"**
+- 请检查步骤 B-7 的「谁可以存取」是不是 **所有人（Anyone）**。
+- 也请检查 `config.js` 里的网址是否完整，结尾要是 `/exec`。
+
+**登入按钮没有出现**
+- 请检查 Settings 分页的 `GoogleClientId` 有没有填。
+- 请检查步骤 A 的 Authorized JavaScript origins 是不是 `https://claudepro-fyhs.github.io`。
+
+**学校电脑跑得很卡**
+- 在机库（Hangar）按 **GRAPHICS: LOW**。
+- 游戏开始几秒后如果侦测到很卡，也会自动切到低画质。
+
+**全班同时交成绩会不会塞车？**
+- Apps Script 会让成绩一个一个排队写入。
+- 偶尔太挤而失败的，游戏会暂存在电脑里，之后自动补送。

@@ -1,0 +1,1867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>钢弹击字 Mecha Strike Typer</title>
+<meta name="description" content="A 3D mecha typing game for English vocabulary practice.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 6 L40 30 L32 26 L24 30Z' fill='%23f6c10e'/%3E%3Crect x='20' y='30' width='24' height='20' rx='3' fill='%231f4fbf'/%3E%3Crect x='26' y='36' width='12' height='4' fill='%2339f0ff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Exo+2:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #060914;
+  --panel: rgba(10, 16, 36, 0.88);
+  --panel-solid: #0c1330;
+  --line: rgba(80, 180, 255, 0.35);
+  --line-strong: #3ad0ff;
+  --text: #e8f1ff;
+  --muted: #93a4c8;
+  --accent: #3ad0ff;
+  --gold: #ffcc33;
+  --danger: #ff4d5e;
+  --good: #3ee07a;
+  --freeze: #8fe3ff;
+  --head: "Orbitron", "Segoe UI", system-ui, sans-serif;
+  --body: "Exo 2", "Segoe UI", system-ui, "Microsoft YaHei", sans-serif;
+  --mono: "Share Tech Mono", Consolas, "Courier New", monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--body); overflow: hidden; }
+body { -webkit-tap-highlight-color: transparent; }
+button, input, select { font-family: inherit; font-size: 16px; }
+a { color: var(--accent); }
+
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 0; }
+#labels { position: fixed; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; overflow: hidden; }
+#typer { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; font-size: 16px; border: 0; padding: 0; z-index: -1; }
+
+/* ---------- top bar ---------- */
+#topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 20; display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px; background: linear-gradient(180deg, rgba(4,8,20,.95), rgba(4,8,20,.6)); border-bottom: 1px solid var(--line); }
+#topbar .logo { font-family: var(--head); font-weight: 900; letter-spacing: 1px; font-size: 15px; white-space: nowrap; }
+#topbar .logo b { color: var(--gold); font-family: var(--body); margin-right: 6px; font-size: 17px; }
+#topbar nav { display: flex; gap: 4px; margin-left: 8px; }
+#topbar nav button { background: transparent; color: var(--muted); border: 1px solid transparent; padding: 6px 12px; border-radius: 6px;
+  font-family: var(--head); font-size: 12px; letter-spacing: 1px; cursor: pointer; }
+#topbar nav button.active { color: var(--text); border-color: var(--line-strong); background: rgba(58,208,255,.12); }
+#userchip { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); white-space: nowrap; }
+#userchip .coins { color: var(--gold); font-weight: 700; }
+#userchip button { background: none; border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
+body.playing #topbar { display: none; }
+
+/* ---------- screens ---------- */
+.screen { position: fixed; inset: 0; z-index: 10; display: none; padding: 64px 16px 16px; overflow-y: auto; }
+.screen.show { display: block; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; backdrop-filter: blur(6px); }
+.center-wrap { min-height: calc(100% - 20px); display: flex; align-items: center; justify-content: center; }
+h1, h2, h3 { font-family: var(--head); letter-spacing: 1px; margin: 0 0 12px; }
+h2 { font-size: 20px; }
+h3 { font-size: 15px; color: var(--accent); }
+p { line-height: 1.5; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: rgba(58,208,255,.12); color: var(--text);
+  border: 1px solid var(--line-strong); border-radius: 10px; padding: 11px 18px; cursor: pointer; font-family: var(--head);
+  font-size: 13px; letter-spacing: 1px; transition: background .15s, transform .1s; }
+.btn:hover { background: rgba(58,208,255,.25); }
+.btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.primary { background: linear-gradient(90deg, #1b6cff, #19c3ff); border-color: #7fe0ff; font-weight: 700; }
+.btn.gold { background: linear-gradient(90deg, #d99a00, #ffcc33); color: #1d1300; border-color: #ffe28a; font-weight: 700; }
+.btn.ghost { background: transparent; border-color: var(--line); }
+.btn.big { font-size: 18px; padding: 16px 28px; }
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.field label { font-size: 13px; color: var(--muted); letter-spacing: .5px; }
+.field input, .field select { background: #0a1128; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.field input:focus, .field select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; }
+.row > * { flex: 1 1 140px; }
+.note { border-left: 3px solid var(--gold); background: rgba(255,204,51,.08); padding: 10px 12px; border-radius: 0 8px 8px 0; font-size: 14px; line-height: 1.5; }
+.err { color: var(--danger); min-height: 20px; font-size: 14px; }
+.ok { color: var(--good); }
+
+/* login */
+#scr-login .card { max-width: 460px; width: 100%; text-align: center; }
+.title-cn { font-size: 44px; font-weight: 900; color: var(--gold); letter-spacing: 6px; text-shadow: 0 0 18px rgba(255,204,51,.45); margin: 0; }
+.title-en { font-family: var(--head); font-size: 22px; letter-spacing: 4px; margin: 4px 0 18px; }
+#gsi-btn { display: flex; justify-content: center; min-height: 44px; margin: 10px 0; }
+.divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin: 14px 0; }
+.divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+
+/* profile */
+#scr-profile .card { max-width: 520px; width: 100%; }
+
+/* hangar */
+#scr-hangar { padding-top: 60px; }
+.hangar-grid { display: grid; grid-template-columns: minmax(260px, 340px) 1fr minmax(260px, 340px); gap: 16px; min-height: calc(100% - 10px); align-items: start; }
+.hangar-spacer { min-height: 300px; }
+.mech-list { display: flex; flex-direction: column; gap: 8px; }
+.mech-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; background: rgba(8,14,32,.7); transition: border-color .15s, background .15s; }
+.mech-card:hover { border-color: var(--accent); }
+.mech-card.sel { border-color: var(--gold); background: rgba(255,204,51,.1); box-shadow: 0 0 0 1px var(--gold) inset; }
+.mech-card .top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.mech-card .name { font-family: var(--head); font-size: 13px; letter-spacing: 1px; }
+.mech-card .price { color: var(--gold); font-size: 13px; white-space: nowrap; }
+.mech-card .hp { color: var(--danger); font-size: 13px; letter-spacing: 1px; }
+.mech-card .desc { font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+.mech-card .minus { color: #ff9aa4; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { flex: 1; background: transparent; color: var(--muted); border: 0; padding: 10px 6px; cursor: pointer; font-family: var(--head); font-size: 12px; letter-spacing: 1px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.active { background: rgba(58,208,255,.2); color: var(--text); }
+details summary { cursor: pointer; color: var(--accent); font-size: 14px; margin: 8px 0; }
+details ul { padding-left: 18px; margin: 6px 0; font-size: 14px; line-height: 1.6; color: var(--muted); }
+kbd { font-family: var(--mono); background: #1a2448; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; color: var(--text); }
+.mech-title { text-align: center; font-family: var(--head); font-size: 22px; letter-spacing: 3px; margin-top: 8px; text-shadow: 0 0 12px rgba(58,208,255,.6); }
+
+/* HUD */
+#hud { position: fixed; inset: 0; z-index: 5; pointer-events: none; display: none; }
+body.playing #hud { display: block; }
+.hud-top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 12px; gap: 10px; }
+.hud-box { background: rgba(5,10,26,.7); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font-family: var(--head); font-size: 12px; letter-spacing: 1px; }
+.hearts { font-size: 20px; color: var(--danger); letter-spacing: 2px; font-family: var(--body); }
+.hearts .empty { color: #3a3f55; }
+.hearts .shield { color: var(--freeze); }
+.hud-stats { display: grid; grid-template-columns: auto auto; gap: 2px 10px; text-align: right; }
+.hud-stats span:nth-child(odd) { color: var(--muted); text-align: left; }
+.hud-center { flex: 1; max-width: 520px; text-align: center; }
+.bossbar { display: none; margin-top: 6px; }
+.bossbar.show { display: block; }
+.bossbar .track { height: 12px; background: #2a0d16; border: 1px solid #ff4d5e; border-radius: 6px; overflow: hidden; }
+.bossbar .fill { height: 100%; background: linear-gradient(90deg, #ff2d55, #ff9a3c); width: 100%; transition: width .25s; }
+.bossbar .lbl { font-size: 11px; color: #ffb3bb; margin-bottom: 3px; }
+.hud-bottom { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; gap: 10px; padding: 10px; pointer-events: auto; flex-wrap: wrap; }
+.item-btn { pointer-events: auto; background: rgba(5,10,26,.8); border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 6px 12px;
+  min-width: 70px; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+.item-btn .k { font-family: var(--mono); color: var(--muted); font-size: 12px; }
+.item-btn .n { font-family: var(--head); font-weight: 700; }
+.item-btn.empty { opacity: .35; }
+.item-btn.ready { border-color: var(--gold); box-shadow: 0 0 14px rgba(255,204,51,.5); }
+#btn-pause { pointer-events: auto; background: rgba(5,10,26,.8); border: 1px solid var(--line); color: var(--text); border-radius: 10px; width: 40px; height: 40px; cursor: pointer; font-size: 16px; }
+#hud-msg { position: absolute; top: 34%; left: 0; right: 0; text-align: center; font-family: var(--head); font-weight: 900; font-size: clamp(26px, 6vw, 54px);
+  letter-spacing: 4px; text-shadow: 0 0 20px rgba(58,208,255,.8); opacity: 0; transition: opacity .3s; }
+#hud-msg.show { opacity: 1; }
+#hud-msg.warn { color: var(--danger); text-shadow: 0 0 22px rgba(255,77,94,.9); animation: blink .5s steps(2) infinite; }
+#hud-msg small { display: block; font-size: 40%; letter-spacing: 2px; color: var(--muted); margin-top: 6px; }
+@keyframes blink { 50% { opacity: .35; } }
+#flash { position: fixed; inset: 0; pointer-events: none; z-index: 4; background: radial-gradient(circle, transparent 40%, rgba(255,40,60,.55)); opacity: 0; transition: opacity .35s; }
+#flash.on { opacity: 1; transition: none; }
+body.frozen #labels .tag { border-color: var(--freeze); color: var(--freeze); }
+#freeze-veil { position: fixed; inset: 0; pointer-events: none; z-index: 3; background: rgba(120,210,255,.12); display: none; box-shadow: inset 0 0 120px rgba(143,227,255,.5); }
+body.frozen #freeze-veil { display: block; }
+#focus-hint { position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); z-index: 6; display: none; pointer-events: auto; }
+body.playing.nofocus #focus-hint { display: inline-flex; }
+
+/* word tags */
+.tag { position: absolute; left: 0; top: 0; transform-origin: 50% 100%; white-space: nowrap; font-family: var(--mono); font-size: 20px;
+  padding: 2px 8px; border-radius: 6px; background: rgba(4,8,22,.78); border: 1px solid rgba(160,190,255,.35); color: #fff; letter-spacing: 1px; will-change: transform; }
+.tag .done { color: var(--gold); }
+.tag.locked { border-color: var(--gold); box-shadow: 0 0 12px rgba(255,204,51,.6); background: rgba(40,28,0,.85); }
+.tag.missile { border-color: #ff6b7a; color: #ffd0d5; font-size: 18px; }
+.tag.boss { font-size: 24px; border-color: #ff4d5e; background: rgba(40,0,10,.85); }
+.tag.shake { animation: shake .25s; }
+@keyframes shake { 20%, 60% { margin-left: -5px; } 40%, 80% { margin-left: 5px; } }
+.floater { position: absolute; font-family: var(--head); font-weight: 700; font-size: 15px; color: var(--gold); pointer-events: none; animation: floatup 1s ease-out forwards; text-shadow: 0 0 8px #000; }
+@keyframes floatup { to { transform: translate(-50%, -60px); opacity: 0; } }
+
+/* pause & result */
+#scr-pause { background: rgba(3,6,16,.6); z-index: 30; }
+#scr-pause .card { max-width: 380px; width: 100%; text-align: center; }
+#scr-result .card { max-width: 720px; width: 100%; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 14px 0; }
+.stat { background: rgba(8,14,32,.8); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.stat .v { font-family: var(--head); font-size: 26px; font-weight: 700; }
+.stat .l { font-size: 12px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+.stat.hero .v { color: var(--gold); font-size: 34px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-family: var(--mono); background: #1a1030; border: 1px solid #5b3a8a; border-radius: 999px; padding: 3px 10px; font-size: 14px; }
+.chip i { font-style: normal; color: var(--muted); margin-left: 4px; }
+.upload { margin: 14px 0; padding: 10px 12px; border-radius: 8px; background: rgba(8,14,32,.8); border: 1px solid var(--line); font-size: 14px; }
+
+/* leaderboard & teacher */
+.page { max-width: 1100px; margin: 0 auto; }
+.page-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.page-head h2 { margin: 0; }
+.page-head .spacer { flex: 1; }
+.lb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { padding: 8px 8px; text-align: left; border-bottom: 1px solid rgba(80,180,255,.15); }
+th { color: var(--muted); font-weight: 600; font-size: 12px; letter-spacing: .5px; text-transform: uppercase; white-space: nowrap; }
+th.sortable { cursor: pointer; }
+th.sortable:hover { color: var(--text); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rank { font-family: var(--head); width: 36px; }
+.rank.r1 { color: #ffd54a; } .rank.r2 { color: #d6dde8; } .rank.r3 { color: #e0955a; }
+.nick { font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.bars { display: flex; flex-direction: column; gap: 6px; }
+.bar-row { display: grid; grid-template-columns: 70px 1fr 90px; align-items: center; gap: 10px; font-size: 14px; }
+.bar-row .track { height: 16px; background: rgba(80,180,255,.08); border-radius: 4px; overflow: hidden; }
+.bar-row .fill { height: 100%; background: #3ad0ff; border-radius: 0 4px 4px 0; }
+.bar-row .val { text-align: right; font-variant-numeric: tabular-nums; }
+.bar-row .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); }
+.up { color: var(--good); } .down { color: var(--danger); }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.section { margin-bottom: 16px; }
+
+@media (max-width: 900px) {
+  .hangar-grid { grid-template-columns: 1fr; }
+  .hangar-spacer { min-height: 34vh; order: -1; }
+  .two-col { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  #topbar { padding: 6px 8px; gap: 6px; flex-wrap: wrap; }
+  #topbar .logo { font-size: 12px; }
+  #topbar nav { margin-left: 0; order: 3; width: 100%; }
+  #topbar nav button { flex: 1; padding: 6px 4px; font-size: 11px; }
+  .screen { padding-top: 116px; }
+  #scr-hangar { padding-top: 116px; }
+  .title-cn { font-size: 36px; }
+  .tag { font-size: 17px; padding: 1px 6px; }
+  .tag.boss { font-size: 20px; }
+  .hearts { font-size: 16px; }
+  .hud-box { font-size: 10px; padding: 4px 7px; }
+  .item-btn { min-width: 0; padding: 5px 9px; }
+  .bar-row { grid-template-columns: 60px 1fr 70px; }
+}
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="freeze-veil"></div>
+<div id="flash"></div>
+<div id="labels"></div>
+<input id="typer" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Type here">
+
+<header id="topbar">
+  <div class="logo"><b>钢弹击字</b>MECHA STRIKE TYPER</div>
+  <nav>
+    <button data-view="play" class="active">PLAY</button>
+    <button data-view="leaderboard">LEADERBOARD</button>
+    <button data-view="teacher">TEACHER</button>
+  </nav>
+  <div id="userchip"></div>
+</header>
+
+<!-- ================= LOGIN ================= -->
+<section id="scr-login" class="screen">
+  <div class="center-wrap">
+    <div class="card">
+      <p class="title-cn">钢弹击字</p>
+      <p class="title-en">MECHA STRIKE TYPER</p>
+      <p class="muted">Type the words to shoot down enemy mechs. Defeat the boss at the end of every stage!</p>
+      <div id="login-school">
+        <h3>Foon Yew students</h3>
+        <p class="small muted">Sign in with your <b>@foonyew.edu.my</b> account to save your scores, coins and mechs.</p>
+        <div id="gsi-btn"></div>
+        <div id="login-msg" class="err"></div>
+      </div>
+      <div class="divider">or</div>
+      <button class="btn ghost" id="btn-guest">PLAY AS GUEST</button>
+      <p class="small muted">Guests can play everything, but scores are not recorded and coins stay on this device only.</p>
+      <div id="setup-warn" class="note small" style="display:none;text-align:left"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PROFILE ================= -->
+<section id="scr-profile" class="screen">
+  <div class="center-wrap">
+    <form class="card" id="profile-form" autocomplete="off">
+      <h2>PILOT REGISTRATION</h2>
+      <p class="small muted" id="profile-email"></p>
+      <div class="row">
+        <div class="field"><label for="pf-class">Class</label><select id="pf-class" required></select></div>
+        <div class="field"><label for="pf-seat">Seat No.</label><input id="pf-seat" type="number" min="1" max="99" inputmode="numeric" required></div>
+      </div>
+      <div class="field"><label for="pf-name">Full name</label><input id="pf-name" maxlength="40" required placeholder="e.g. Tan Wei Ming / 陈伟明"></div>
+      <div class="field"><label for="pf-nick">Nickname (shown on the leaderboard)</label><input id="pf-nick" maxlength="12" required placeholder="e.g. StarPilot7"></div>
+      <div class="note">
+        <b>Why do I need a nickname?</b><br>
+        The leaderboard can be seen by everyone, so it shows <b>only your nickname</b> — never your real name.
+        Your real name, class and seat number are sent only to your teacher.<br>
+        Rules: 2–12 letters, numbers or Chinese characters (no spaces). Rude or offensive words in <b>any language</b> are not allowed,
+        and your teacher can change a nickname at any time.
+      </div>
+      <p id="profile-msg" class="err"></p>
+      <div class="row" style="justify-content:flex-end">
+        <button type="button" class="btn ghost" id="btn-profile-cancel" style="flex:0 0 auto">CANCEL</button>
+        <button type="submit" class="btn primary" id="btn-profile-save" style="flex:0 0 auto">SAVE &amp; CONTINUE</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- ================= HANGAR ================= -->
+<section id="scr-hangar" class="screen">
+  <div class="hangar-grid">
+    <div class="card">
+      <h3>HANGAR — CHOOSE YOUR MECH</h3>
+      <div class="mech-list" id="mech-list"></div>
+      <p id="shop-msg" class="err"></p>
+    </div>
+    <div class="hangar-spacer"><div class="mech-title" id="mech-title"></div></div>
+    <div class="card">
+      <h3>MISSION SETUP</h3>
+      <div class="field"><label>Difficulty</label>
+        <div class="seg" id="diff-seg">
+          <button data-d="Easy">EASY</button><button data-d="Normal">NORMAL</button><button data-d="Hard">HARD</button>
+        </div>
+      </div>
+      <div class="field"><label for="bank-select">Word bank</label><select id="bank-select"></select></div>
+      <button class="btn primary big" id="btn-launch" style="width:100%">LAUNCH ▶</button>
+      <details>
+        <summary>How to play</summary>
+        <ul>
+          <li>Type the word on an enemy to lock on and fire. Finish the word to destroy it.</li>
+          <li>Enemies that reach you cost 1 ♥. Lose all ♥ and the mission ends.</li>
+          <li><kbd>Backspace</kbd> releases your lock. <kbd>Esc</kbd> pauses.</li>
+          <li>Destroyed enemies may drop items: <kbd>1</kbd> 💣 clear screen, <kbd>2</kbd> ❄️ freeze 5 s, <kbd>3</kbd> 🛡️ shield.</li>
+          <li>Boss: type its word to damage it. Type the words on its missiles to shoot them down!</li>
+          <li>Seraph Zero only: after 5 words in a row press <kbd>Space</kbd> for the Twin Buster.</li>
+        </ul>
+      </details>
+      <div class="row small" style="margin-top:6px">
+        <button class="btn ghost" id="btn-edit-profile">EDIT PROFILE</button>
+        <button class="btn ghost" id="btn-quality">GRAPHICS: HIGH</button>
+        <button class="btn ghost" id="btn-sound">SOUND: ON</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HUD ================= -->
+<div id="hud">
+  <div class="hud-top">
+    <div class="hud-box"><div class="hearts" id="hud-hearts"></div><div id="hud-stage">STAGE 1</div></div>
+    <div class="hud-center">
+      <div class="bossbar" id="bossbar"><div class="lbl" id="boss-name">BOSS</div><div class="track"><div class="fill" id="boss-fill"></div></div></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-start">
+      <div class="hud-box hud-stats">
+        <span>SCORE</span><span id="hud-score">0</span>
+        <span>WPM</span><span id="hud-wpm">0</span>
+        <span>COMBO</span><span id="hud-combo">0</span>
+      </div>
+      <button id="btn-pause" aria-label="Pause">❚❚</button>
+    </div>
+  </div>
+  <div id="hud-msg"></div>
+  <div class="hud-bottom">
+    <button class="item-btn" data-item="bomb"><span class="k">1</span>💣<span class="n">0</span></button>
+    <button class="item-btn" data-item="freeze"><span class="k">2</span>❄️<span class="n">0</span></button>
+    <button class="item-btn" data-item="shield"><span class="k">3</span>🛡️<span class="n">0</span></button>
+    <button class="item-btn" data-item="buster" id="buster-btn" style="display:none"><span class="k">SPACE</span>⚡<span class="n">0/5</span></button>
+  </div>
+</div>
+<button class="btn gold" id="focus-hint">TAP HERE TO KEEP TYPING</button>
+
+<!-- ================= PAUSE ================= -->
+<section id="scr-pause" class="screen">
+  <div class="center-wrap">
+    <div class="card">
+      <h2>PAUSED</h2>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn primary" id="btn-resume">RESUME</button>
+        <button class="btn ghost" id="btn-end">END MISSION</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= RESULT ================= -->
+<section id="scr-result" class="screen">
+  <div class="center-wrap">
+    <div class="card">
+      <h2 id="res-title">MISSION COMPLETE</h2>
+      <div class="stats" id="res-stats"></div>
+      <h3>WORDS YOU MISTYPED</h3>
+      <div class="chips" id="res-mistakes"></div>
+      <div class="upload" id="res-upload"></div>
+      <div class="row" style="justify-content:flex-end">
+        <button class="btn ghost" id="btn-to-hangar" style="flex:0 0 auto">HANGAR</button>
+        <button class="btn primary" id="btn-again" style="flex:0 0 auto">PLAY AGAIN ▶</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= LEADERBOARD ================= -->
+<section id="scr-leaderboard" class="screen">
+  <div class="page">
+    <div class="page-head">
+      <h2>LEADERBOARD</h2>
+      <div class="seg" id="lb-seg" style="min-width:260px">
+        <button data-d="Easy">EASY</button><button data-d="Normal" class="active">NORMAL</button><button data-d="Hard">HARD</button>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="btn-lb-refresh">REFRESH</button>
+    </div>
+    <p class="small muted" id="lb-note">Only nicknames are shown. Ranked by typing speed (WPM).</p>
+    <div id="lb-body" class="lb-grid"></div>
+  </div>
+</section>
+
+<!-- ================= TEACHER ================= -->
+<section id="scr-teacher" class="screen">
+  <div class="page">
+    <div id="t-login" class="center-wrap">
+      <form class="card" id="t-form" style="max-width:380px;width:100%">
+        <h2>TEACHER DASHBOARD</h2>
+        <div class="field"><label for="t-pass">Password</label><input id="t-pass" type="password" autocomplete="current-password" required></div>
+        <p class="err" id="t-msg"></p>
+        <button class="btn primary" type="submit" style="width:100%">ENTER</button>
+      </form>
+    </div>
+    <div id="t-dash" style="display:none">
+      <div class="page-head">
+        <h2>TEACHER DASHBOARD</h2>
+        <div class="spacer"></div>
+        <select id="t-class" class="btn ghost" style="font-family:var(--body)"></select>
+        <button class="btn ghost" id="btn-t-refresh">REFRESH</button>
+        <button class="btn ghost" id="btn-t-logout">LOG OUT</button>
+      </div>
+      <div class="kpis" id="t-kpis"></div>
+      <div class="two-col">
+        <div class="card section"><h3>AVERAGE SPEED BY CLASS (WPM, all games)</h3><div class="bars" id="t-class-bars"></div>
+          <div class="table-wrap" style="margin-top:12px"><table id="t-class-table"></table></div></div>
+        <div class="card section"><h3 id="t-mist-title">TOP 20 MISTYPED WORDS</h3><div class="bars" id="t-mistakes"></div></div>
+      </div>
+      <div class="card section">
+        <h3 id="t-stu-title">STUDENTS</h3>
+        <p class="small muted">Improvement = average WPM of the latest 3 games − average WPM of the first 3 games. Click a column title to sort.</p>
+        <div class="table-wrap"><table id="t-students"></table></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script src="config.js"></script>
+<script src="lib/three.min.js"></script>
+<script>
+"use strict";
+/* =====================================================================
+ *  DATA
+ * ===================================================================== */
+const CFG = Object.assign({ APPS_SCRIPT_URL: "", FALLBACK_CLASSES: ["1A", "1B"], SCHOOL_DOMAIN: "foonyew.edu.my" }, window.GAME_CONFIG || {});
+
+const WORD_BANKS = {
+  everyday: { name: "Everyday Words", words: `about after again air animal answer apple ask away baby back ball bank bath beach bear because bed before begin bell best big bird black blue boat body book both box boy bread bring brother brown build bus busy buy cake call car card care carry cat catch chair change child city clean clock close cloud coat cold come cook cool corner could country cow cup cut dance dark day desk dinner dog door down draw dream dress drink drive duck early earth eat egg empty enjoy every face fall family farm fast father feel field find fine fire fish floor flower fly food foot forest free friend frog fruit full game garden girl give glass good grass great green ground grow hand happy hat head hear heart help high hill hold home horse hot house hungry idea jump kind king kitchen know lake large laugh learn leave letter light like lion listen little live long look love lunch make many milk money moon morning mother mouth music name near never new night north number ocean open orange paper park party people pencil piano place plant play pocket queen quiet rain read ready river road rock room round run salt school sea season seed shoe shop short sing sister sleep slow small smile snow soft song soon sound south speak spring star stone story street strong sugar summer sun sweet table tall teacher tell thank tiger today tomorrow tree truck under water weather week white wind window winter world write yellow young zoo` },
+  school: { name: "School & Classroom", words: `assembly art attendance bag biology blackboard book calculator canteen chapter chemistry class classmate compass computer copy crayon diary dictionary discipline eraser essay exam exercise experiment field folder friend geography glue grade grammar hall history holiday homework hostel knowledge lab laptop learn lesson library locker lunch map marker mathematics monitor music notebook paper pencil physics playground poem prefect principal project question quiz read recess report ruler scissors science semester sharpener spelling sport student study subject teacher test textbook timetable tuition uniform vocabulary whiteboard write answer marks badge chalk board club debate council prize trophy award lecture revise summary sentence paragraph chorus orchestra badminton basketball football netball volleyball athletics` },
+  science: { name: "Science & Technology", words: `acid atom bacteria battery bulb carbon cell chemical circuit climate code compound computer crystal current data density digital electric electron element energy engine equation erosion experiment force formula fossil friction fuel galaxy gas gene gravity habitat heat hydrogen internet laser lens liquid magnet mass matter metal microscope mineral molecule motion network neutron nitrogen nucleus orbit organism oxygen particle photosynthesis physics planet plastic pressure proton radiation reaction robot rocket satellite signal software solar solid sound species speed spectrum temperature theory tissue vacuum velocity virus volcano voltage volume wave weight algorithm pixel sensor keyboard program browser download upload password server` },
+  space: { name: "Space & Mecha", words: `armor asteroid beam booster captain cannon cockpit colony comet commander cosmos defense destroyer eclipse engine fleet fortress fusion galaxy hangar hatch helmet hero launch laser lunar machine mech meteor mission module nebula orbit pilot planet plasma quantum radar reactor rocket rover saber satellite scanner shield signal squadron starship station sword target thruster titan turbo vector victory visor warp weapon wing zero alliance battle combat escape frontier gravity horizon impact jet knight legend mobile nova pulse rescue rival shuttle stealth storm strike system thunder unit zone` },
+  challenge: { name: "Challenge Words", words: `accommodate achievement acknowledge adventure appreciate atmosphere beautiful beginning believe business calendar category celebrate challenge character colleague committee communicate community competition confidence conscience consequence curiosity definitely delicious democracy dictionary different disappear discipline embarrass encourage environment equipment especially excellent exaggerate experience explanation extraordinary fascinating foreign government grammar guarantee happiness harmonious imagination immediately important independent intelligent interesting knowledge laboratory language leadership literature magnificent mathematics millennium mischievous necessary neighbour noticeable occasionally occurrence opportunity parliament perseverance personality possession pronunciation psychology questionnaire receive recommend relationship remember responsibility restaurant rhythm schedule separate successful surprise temperature thorough tomorrow tournament unnecessary vegetable volunteer wednesday weird yesterday` },
+};
+for (const k in WORD_BANKS) WORD_BANKS[k].words = [...new Set(WORD_BANKS[k].words.split(/\s+/).filter(Boolean))];
+
+// Keep prices in sync with MECH_PRICES in apps-script/Code.gs
+const MECHS = [
+  { id: "starter", name: "VANGUARD", price: 0, hp: 5, plus: "Balanced all-rounder.", minus: "",
+    colors: { main: 0xeef1f6, accent: 0x1f4fbf, trim: 0xd62a2a, fin: 0xf6c10e, visor: 0x39f0ff, dark: 0x3a4052 } },
+  { id: "guardian", name: "BASTION", price: 300, hp: 6, plus: "Heavy armor: 6 ♥.", minus: "Coins −20%", coinMult: 0.8, bulk: 1.18,
+    colors: { main: 0x6b7a4f, accent: 0x414a37, trim: 0xc9a227, fin: 0xc9a227, visor: 0xff9a3c, dark: 0x2c3126 } },
+  { id: "striker", name: "CRIMSON STRIKER", price: 300, hp: 4, plus: "Items drop 1.8× more often.", minus: "Only 4 ♥", dropMult: 1.8,
+    colors: { main: 0xc9302c, accent: 0x7a1414, trim: 0x222428, fin: 0xf2f2f2, visor: 0xfff45c, dark: 0x2a1a1a } },
+  { id: "phantom", name: "PHANTOM", price: 500, hp: 5, plus: "Boss missiles fly 25% slower.", minus: "Coins −10%", coinMult: 0.9, missileSlow: 1.33,
+    colors: { main: 0x2a2438, accent: 0x4b2f7a, trim: 0x8d5cf6, fin: 0xb08cff, visor: 0xff3cc7, dark: 0x16121f } },
+  { id: "seraph", name: "SERAPH ZERO", price: 1200, hp: 4, plus: "Angel wings + Twin Buster: after 5 words in a row, press SPACE to blast the 3 closest targets.", minus: "Only 4 ♥", special: true,
+    colors: { main: 0xf7f9fc, accent: 0x2d62d6, trim: 0xd8342f, fin: 0xf4c430, visor: 0x3cff8a, dark: 0x4a5064 } },
+];
+const MECH_BY_ID = Object.fromEntries(MECHS.map(m => [m.id, m]));
+
+const DIFF = {
+  Easy:   { travel: 15, spawn: 2.6, minActive: 2, maxActive: 5, bossHp: 4, bossAtk: 6.5, missileTime: 7.5, drone: 0.6, heavy: 0.1, kills: 6, mult: 1 },
+  Normal: { travel: 11, spawn: 1.9, minActive: 3, maxActive: 7, bossHp: 6, bossAtk: 5.0, missileTime: 6.0, drone: 0.4, heavy: 0.25, kills: 8, mult: 1.3 },
+  Hard:   { travel: 8,  spawn: 1.4, minActive: 3, maxActive: 9, bossHp: 8, bossAtk: 3.8, missileTime: 4.8, drone: 0.25, heavy: 0.4, kills: 10, mult: 1.6 },
+};
+const BOSS_NAMES = ["GIGA CRAB", "IRON LOTUS", "DARK HALO", "RED COMET MA", "TITAN CORE", "VOID EMPEROR"];
+
+/* =====================================================================
+ *  STORAGE & API
+ * ===================================================================== */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  sget(k, d) { try { const v = sessionStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  sset(k, v) { try { if (v == null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+
+async function api(payload, method = "POST", timeoutMs = 15000) {
+  if (!CFG.APPS_SCRIPT_URL) throw new Error("not_configured");
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    let res;
+    if (method === "GET") {
+      res = await fetch(CFG.APPS_SCRIPT_URL + "?" + new URLSearchParams(payload), { signal: ctrl.signal });
+    } else {
+      res = await fetch(CFG.APPS_SCRIPT_URL, { method: "POST", body: JSON.stringify(payload),
+        headers: { "Content-Type": "text/plain;charset=utf-8" }, signal: ctrl.signal });
+    }
+    if (!res.ok) throw new Error("http_" + res.status);
+    return await res.json();
+  } finally { clearTimeout(timer); }
+}
+
+const S = {
+  remote: { classes: store.get("mst_classes", CFG.FALLBACK_CLASSES), clientId: "", minAccuracy: 80, loaded: false },
+  session: store.sget("mst_session", null), // {token, email, exp, player}
+  guest: store.get("mst_guest", { coins: 0, owned: ["starter"], selected: "starter" }),
+  prefs: Object.assign({ diff: "Normal", bank: "everyday", quality: "high", sound: true }, store.get("mst_prefs", {})),
+};
+if (S.session && Date.now() > S.session.exp) { S.session = null; store.sset("mst_session", null); }
+
+function isSchool() { return !!(S.session && S.session.token); }
+function wallet() { return isSchool() ? S.session.player : S.guest; }
+function saveWallet() { if (isSchool()) store.sset("mst_session", S.session); else store.set("mst_guest", S.guest); }
+function savePrefs() { store.set("mst_prefs", S.prefs); }
+
+/* =====================================================================
+ *  UI HELPERS
+ * ===================================================================== */
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => [...document.querySelectorAll(sel)];
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function showScreen(id) {
+  $$(".screen").forEach(s => s.classList.toggle("show", s.id === id));
+  S.currentScreen = id;
+  render3DMode();
+}
+function fmtTime(sec) { sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); }
+function fmtDate(ms) { if (!ms) return "—"; const d = new Date(ms); return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }); }
+
+let currentView = "play";
+function setView(v) {
+  currentView = v;
+  $$("#topbar nav button").forEach(b => b.classList.toggle("active", b.dataset.view === v));
+  if (v === "leaderboard") { showScreen("scr-leaderboard"); loadLeaderboard(); }
+  else if (v === "teacher") { showScreen("scr-teacher"); teacherInit(); }
+  else goPlayHome();
+}
+$$("#topbar nav button").forEach(b => b.addEventListener("click", () => setView(b.dataset.view)));
+
+function renderUserChip() {
+  const el = $("#userchip");
+  if (isSchool()) {
+    const p = S.session.player;
+    const who = p ? `${esc(p.nickname)} <span class="small">(${esc(p.cls)}-${esc(p.seat)})</span>` : esc(S.session.email);
+    el.innerHTML = `<span>👤 ${who}</span><span class="coins">🪙 ${p ? p.coins : 0}</span><button id="btn-signout">Sign out</button>`;
+    $("#btn-signout").onclick = signOut;
+  } else if (S.guestMode) {
+    el.innerHTML = `<span>Guest</span><span class="coins">🪙 ${S.guest.coins}</span><button id="btn-signin">Sign in</button>`;
+    $("#btn-signin").onclick = () => { S.guestMode = false; showLogin(); };
+  } else el.innerHTML = "";
+}
+
+function goPlayHome() {
+  currentView = "play";
+  $$("#topbar nav button").forEach(b => b.classList.toggle("active", b.dataset.view === "play"));
+  if (isSchool()) { if (!S.session.player) showProfile(); else showHangar(); }
+  else if (S.guestMode) showHangar();
+  else showLogin();
+}
+
+/* =====================================================================
+ *  CONFIG + GOOGLE SIGN-IN
+ * ===================================================================== */
+async function loadRemoteConfig() {
+  if (!CFG.APPS_SCRIPT_URL) return;
+  try {
+    const c = await api({ action: "config" }, "GET", 10000);
+    if (c && c.ok) {
+      if (c.classes && c.classes.length) { S.remote.classes = c.classes; store.set("mst_classes", c.classes); }
+      S.remote.clientId = c.clientId || "";
+      S.remote.minAccuracy = c.minAccuracy;
+      S.remote.loaded = true;
+    }
+  } catch (e) { console.warn("config load failed", e); }
+}
+
+let gsiLoaded = null;
+function loadGsi() {
+  if (gsiLoaded) return gsiLoaded;
+  gsiLoaded = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client"; s.async = true;
+    s.onload = () => resolve(); s.onerror = () => reject(new Error("gsi"));
+    document.head.appendChild(s);
+  });
+  return gsiLoaded;
+}
+
+async function showLogin() {
+  showScreen("scr-login");
+  renderUserChip();
+  const warn = $("#setup-warn"), msg = $("#login-msg");
+  warn.style.display = "none";
+  if (!CFG.APPS_SCRIPT_URL) {
+    warn.style.display = "block";
+    warn.textContent = "Setup not finished: school sign-in and score saving are off. (Teacher: paste the Apps Script URL into config.js — see README.)";
+    $("#gsi-btn").innerHTML = "";
+    return;
+  }
+  if (!S.remote.loaded) { msg.textContent = ""; $("#gsi-btn").innerHTML = '<span class="muted small">Connecting…</span>'; await loadRemoteConfig(); }
+  if (!S.remote.loaded) { $("#gsi-btn").innerHTML = ""; msg.textContent = "Can't reach the school server right now. You can still play as a guest."; return; }
+  if (!S.remote.clientId) { $("#gsi-btn").innerHTML = ""; warn.style.display = "block"; warn.textContent = "Setup not finished: GoogleClientId is empty in the Settings sheet."; return; }
+  try {
+    await loadGsi();
+    google.accounts.id.initialize({ client_id: S.remote.clientId, callback: onGoogleCredential, hd: CFG.SCHOOL_DOMAIN, auto_select: false, cancel_on_tap_outside: true });
+    $("#gsi-btn").innerHTML = "";
+    google.accounts.id.renderButton($("#gsi-btn"), { theme: "filled_blue", size: "large", shape: "pill", text: "signin_with" });
+  } catch (e) {
+    $("#gsi-btn").innerHTML = "";
+    msg.textContent = "Google sign-in could not load on this network. You can still play as a guest.";
+  }
+}
+
+async function onGoogleCredential(resp) {
+  const msg = $("#login-msg");
+  msg.className = "muted"; msg.textContent = "Signing in…";
+  try {
+    const r = await api({ action: "login", idToken: resp.credential });
+    if (r.ok) {
+      S.session = { token: r.token, email: r.email, exp: Date.now() + 11.5 * 3600 * 1000, player: r.player };
+      store.sset("mst_session", S.session);
+      S.guestMode = false;
+      msg.textContent = "";
+      flushPending();
+      goPlayHome();
+    } else if (r.error === "not_school") {
+      msg.className = "err";
+      msg.textContent = `${r.email || "This account"} is not a @${CFG.SCHOOL_DOMAIN} account. You can still play as a guest (scores are not recorded).`;
+    } else { msg.className = "err"; msg.textContent = "Sign-in failed (" + r.error + "). Please try again."; }
+  } catch (e) { msg.className = "err"; msg.textContent = "Can't reach the school server. Please try again, or play as a guest."; }
+}
+
+function signOut() {
+  try { if (window.google && google.accounts) google.accounts.id.disableAutoSelect(); } catch (e) {}
+  S.session = null; store.sset("mst_session", null);
+  S.guestMode = false;
+  showLogin();
+}
+$("#btn-guest").onclick = () => { S.guestMode = true; showHangar(); };
+
+/* =====================================================================
+ *  PROFILE
+ * ===================================================================== */
+function showProfile() {
+  showScreen("scr-profile");
+  renderUserChip();
+  const p = S.session.player || {};
+  const sel = $("#pf-class");
+  sel.innerHTML = '<option value="">— choose —</option>' + S.remote.classes.map(c => `<option>${esc(c)}</option>`).join("");
+  sel.value = p.cls || "";
+  $("#pf-seat").value = p.seat || "";
+  $("#pf-name").value = p.name || "";
+  $("#pf-nick").value = p.nickname || "";
+  $("#profile-email").textContent = "Signed in as " + S.session.email;
+  $("#profile-msg").textContent = "";
+  $("#btn-profile-cancel").style.display = S.session.player ? "" : "none";
+}
+$("#btn-profile-cancel").onclick = () => showHangar();
+$("#profile-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = $("#profile-msg"), btn = $("#btn-profile-save");
+  const nick = $("#pf-nick").value.trim();
+  if (!/^[A-Za-z0-9_\-㐀-鿿]{2,12}$/.test(nick)) { msg.textContent = "Nickname: 2–12 letters, numbers or Chinese characters, no spaces."; return; }
+  btn.disabled = true; msg.className = "muted"; msg.textContent = "Saving…";
+  try {
+    const r = await api({ action: "saveProfile", token: S.session.token, cls: $("#pf-class").value, seat: $("#pf-seat").value,
+      name: $("#pf-name").value, nickname: nick });
+    if (r.ok) { S.session.player = r.player; saveWallet(); showHangar(); }
+    else if (r.error === "session_expired") { msg.className = "err"; msg.textContent = "Your sign-in expired. Please sign in again."; setTimeout(signOut, 1500); }
+    else { msg.className = "err"; msg.textContent = r.message || ("Could not save (" + r.error + ")."); }
+  } catch (err) { msg.className = "err"; msg.textContent = "Can't reach the school server. Please try again."; }
+  btn.disabled = false;
+});
+
+/* =====================================================================
+ *  HANGAR / SHOP
+ * ===================================================================== */
+let previewId = null;
+function showHangar() {
+  showScreen("scr-hangar");
+  renderUserChip();
+  const w = wallet();
+  if (!previewId || !MECH_BY_ID[previewId]) previewId = w.selected || "starter";
+  renderMechList();
+  $$("#diff-seg button").forEach(b => b.classList.toggle("active", b.dataset.d === S.prefs.diff));
+  const bs = $("#bank-select");
+  bs.innerHTML = Object.entries(WORD_BANKS).map(([k, b]) => `<option value="${k}">${esc(b.name)}</option>`).join("");
+  bs.value = WORD_BANKS[S.prefs.bank] ? S.prefs.bank : "everyday";
+  $("#btn-edit-profile").style.display = isSchool() ? "" : "none";
+  $("#btn-quality").textContent = "GRAPHICS: " + S.prefs.quality.toUpperCase();
+  $("#btn-sound").textContent = "SOUND: " + (S.prefs.sound ? "ON" : "OFF");
+  $("#shop-msg").textContent = "";
+}
+function renderMechList() {
+  const w = wallet();
+  $("#mech-list").innerHTML = MECHS.map(m => {
+    const owned = w.owned.includes(m.id);
+    const selected = w.selected === m.id;
+    let action;
+    if (selected) action = '<span class="ok small">✔ IN USE</span>';
+    else if (owned) action = `<button class="btn" data-use="${m.id}" style="padding:5px 10px">USE</button>`;
+    else action = `<button class="btn gold" data-buy="${m.id}" style="padding:5px 10px" ${w.coins < m.price ? "disabled" : ""}>BUY 🪙${m.price}</button>`;
+    return `<div class="mech-card ${previewId === m.id ? "sel" : ""}" data-id="${m.id}">
+      <div class="top"><span class="name">${m.name}</span>${action}</div>
+      <div class="hp">${"♥".repeat(m.hp)} <span class="muted small">${owned ? "" : "🪙 " + m.price}</span></div>
+      <div class="desc">${esc(m.plus)} ${m.minus ? `<span class="minus">(${esc(m.minus)})</span>` : ""}</div></div>`;
+  }).join("");
+  $$("#mech-list .mech-card").forEach(c => c.addEventListener("click", (e) => {
+    if (e.target.closest("button")) return;
+    previewId = c.dataset.id; renderMechList();
+  }));
+  $$("#mech-list [data-use]").forEach(b => b.onclick = () => selectMech(b.dataset.use));
+  $$("#mech-list [data-buy]").forEach(b => b.onclick = () => buyMech(b.dataset.buy, b));
+  $("#mech-title").textContent = MECH_BY_ID[previewId].name;
+  setPreviewMech(previewId);
+  renderUserChip();
+}
+function selectMech(id) {
+  const w = wallet(); w.selected = id; previewId = id; saveWallet(); renderMechList();
+  if (isSchool()) api({ action: "selectMech", token: S.session.token, mech: id }).catch(() => {});
+}
+async function buyMech(id, btn) {
+  const m = MECH_BY_ID[id], msg = $("#shop-msg");
+  msg.textContent = "";
+  if (isSchool()) {
+    btn.disabled = true; btn.textContent = "…";
+    try {
+      const r = await api({ action: "buyMech", token: S.session.token, mech: id });
+      if (r.player) S.session.player = r.player;
+      saveWallet();
+      if (!r.ok) msg.textContent = r.error === "not_enough_coins" ? "Not enough coins yet — keep typing!" : r.error === "session_expired" ? "Sign-in expired. Please sign in again." : "Purchase failed (" + r.error + ").";
+      else { previewId = id; sfx("item"); }
+    } catch (e) { msg.textContent = "Can't reach the school server. Try again later."; }
+    renderMechList();
+  } else {
+    const w = S.guest;
+    if (w.coins < m.price) { msg.textContent = "Not enough coins yet — keep typing!"; return; }
+    w.coins -= m.price; w.owned.push(id); w.selected = id; previewId = id; saveWallet(); sfx("item"); renderMechList();
+  }
+}
+$$("#diff-seg button").forEach(b => b.onclick = () => { S.prefs.diff = b.dataset.d; savePrefs(); $$("#diff-seg button").forEach(x => x.classList.toggle("active", x === b)); });
+$("#bank-select").onchange = (e) => { S.prefs.bank = e.target.value; savePrefs(); };
+$("#btn-edit-profile").onclick = () => showProfile();
+$("#btn-quality").onclick = () => {
+  S.prefs.quality = S.prefs.quality === "high" ? "low" : "high"; savePrefs(); applyQuality();
+  $("#btn-quality").textContent = "GRAPHICS: " + S.prefs.quality.toUpperCase();
+};
+$("#btn-sound").onclick = () => { S.prefs.sound = !S.prefs.sound; savePrefs(); $("#btn-sound").textContent = "SOUND: " + (S.prefs.sound ? "ON" : "OFF"); };
+$("#btn-launch").addEventListener("click", () => {
+  const w = wallet();
+  if (!w.owned.includes(previewId)) { $("#shop-msg").textContent = "Buy this mech first, or pick one you own."; return; }
+  if (w.selected !== previewId) selectMech(previewId);
+  typer.focus(); // must happen inside the click so phone keyboards open
+  startGame();
+});
+
+/* =====================================================================
+ *  SOUND (tiny synth, no files)
+ * ===================================================================== */
+let actx = null, noiseBuf = null;
+function sfx(type) {
+  if (!S.prefs.sound) return;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    actx = actx || new AC();
+    if (actx.state === "suspended") actx.resume();
+    const t = actx.currentTime, g = actx.createGain();
+    g.connect(actx.destination);
+    const tone = (freq, dur, vol, wave = "square", slide = 0) => {
+      const o = actx.createOscillator(); o.type = wave; o.frequency.setValueAtTime(freq, t);
+      if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); o.start(t); o.stop(t + dur + 0.02);
+    };
+    const noise = (dur, vol) => {
+      if (!noiseBuf) { noiseBuf = actx.createBuffer(1, actx.sampleRate * 0.6, actx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+      const s = actx.createBufferSource(); s.buffer = noiseBuf;
+      const f = actx.createBiquadFilter(); f.type = "lowpass"; f.frequency.setValueAtTime(1800, t); f.frequency.exponentialRampToValueAtTime(120, t + dur);
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      s.connect(f); f.connect(g); s.start(t); s.stop(t + dur);
+    };
+    switch (type) {
+      case "key": tone(1300, 0.04, 0.03); break;
+      case "err": tone(160, 0.15, 0.06, "sawtooth"); break;
+      case "kill": noise(0.35, 0.18); break;
+      case "hit": noise(0.5, 0.3); tone(90, 0.4, 0.1, "sawtooth", -40); break;
+      case "item": tone(700, 0.18, 0.05, "triangle", 700); break;
+      case "boss": tone(110, 1.2, 0.08, "sawtooth", 60); break;
+      case "buster": noise(0.8, 0.25); tone(220, 0.8, 0.08, "sawtooth", 600); break;
+      case "clear": tone(520, 0.5, 0.06, "triangle", 520); break;
+    }
+  } catch (e) {}
+}
+
+/* =====================================================================
+ *  THREE.JS SCENE
+ * ===================================================================== */
+const V3 = THREE.Vector3;
+const canvas = $("#scene");
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: S.prefs.quality === "high", powerPreference: "high-performance" });
+} catch (e) {
+  document.body.insertAdjacentHTML("beforeend", '<div class="note" style="position:fixed;bottom:10px;left:10px;right:10px;z-index:99">This browser cannot show 3D graphics (WebGL is off). Please try Chrome or Edge.</div>');
+}
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1200);
+scene.fog = new THREE.Fog(0x0a0b1e, 70, 190);
+{
+  const c = document.createElement("canvas"); c.width = 4; c.height = 256;
+  const x = c.getContext("2d"), gr = x.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, "#03040c"); gr.addColorStop(0.55, "#0b0d26"); gr.addColorStop(1, "#1e0f3a");
+  x.fillStyle = gr; x.fillRect(0, 0, 4, 256);
+  scene.background = new THREE.CanvasTexture(c);
+}
+scene.add(new THREE.HemisphereLight(0x9cc4ff, 0x20123a, 0.95));
+const sun = new THREE.DirectionalLight(0xffffff, 1.15); sun.position.set(6, 12, 8); scene.add(sun);
+const rim = new THREE.DirectionalLight(0x66aaff, 0.6); rim.position.set(-8, 4, -10); scene.add(rim);
+
+// planet
+const planet = new THREE.Mesh(new THREE.SphereGeometry(70, 32, 24), new THREE.MeshStandardMaterial({ color: 0x2c5fb8, roughness: 0.9, fog: false }));
+planet.position.set(-150, -60, -420); scene.add(planet);
+const ring = new THREE.Mesh(new THREE.RingGeometry(90, 120, 64), new THREE.MeshBasicMaterial({ color: 0x8fb7ff, transparent: true, opacity: 0.18, side: THREE.DoubleSide, fog: false }));
+ring.position.copy(planet.position); ring.rotation.set(1.2, 0.2, 0.3); scene.add(ring);
+
+// stars
+let stars;
+function buildStars(count) {
+  if (stars) { scene.remove(stars); stars.geometry.dispose(); }
+  const pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) { pos[i * 3] = (Math.random() - 0.5) * 320; pos[i * 3 + 1] = (Math.random() - 0.3) * 180; pos[i * 3 + 2] = -Math.random() * 420 + 20; }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  stars = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.9, sizeAttenuation: true, fog: false, transparent: true, opacity: 0.9 }));
+  scene.add(stars);
+}
+
+function applyQuality() {
+  if (!renderer) return;
+  const high = S.prefs.quality === "high";
+  renderer.setPixelRatio(high ? Math.min(window.devicePixelRatio || 1, 2) : Math.min(1, (window.devicePixelRatio || 1) * 0.75));
+  buildStars(high ? 1600 : 600);
+  resize();
+}
+
+/* ---------- model helpers ---------- */
+const matCache = {};
+function MS(color, extra) {
+  const key = color + JSON.stringify(extra || {});
+  return matCache[key] || (matCache[key] = new THREE.MeshStandardMaterial(Object.assign({ color, metalness: 0.35, roughness: 0.5, flatShading: true }, extra)));
+}
+function MB(color, extra) { return new THREE.MeshBasicMaterial(Object.assign({ color }, extra)); }
+function box(w, h, d, mat, x, y, z, parent) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x || 0, y || 0, z || 0); if (parent) parent.add(m); return m; }
+function cyl(rt, rb, h, mat, x, y, z, parent, seg = 10) { const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat); m.position.set(x || 0, y || 0, z || 0); if (parent) parent.add(m); return m; }
+
+/* Player mech: built facing +z (front), origin at the feet. */
+function buildMech(def) {
+  const c = def.colors, b = def.bulk || 1;
+  const g = new THREE.Group();
+  const main = MS(c.main), acc = MS(c.accent), trim = MS(c.trim), dark = MS(c.dark), fin = MS(c.fin, { metalness: 0.7, roughness: 0.25 });
+  const finBright = MS(c.fin, { metalness: 0.2, roughness: 0.4, emissive: c.fin, emissiveIntensity: 0.35 });
+  const visor = MB(c.visor), glow = MB(0x7fd8ff, { transparent: true, opacity: 0.9 });
+  // legs
+  for (const s of [-1, 1]) {
+    box(0.42 * b, 0.8, 0.46, dark, 0.32 * s * b, 1.05, 0, g);
+    box(0.52 * b, 0.95, 0.62, main, 0.34 * s * b, 0.27, 0.02, g);
+    box(0.32 * b, 0.3, 0.14, acc, 0.34 * s * b, 0.52, 0.36, g);
+    box(0.54 * b, 0.22, 0.9, trim, 0.34 * s * b, -0.31, 0.1, g);
+    box(0.44 * b, 0.5, 0.14, main, 0.34 * s * b, 1.42, 0.3, g); // front skirt
+  }
+  box(0.85 * b, 0.36, 0.62, dark, 0, 1.62, 0, g);
+  box(0.34, 0.3, 0.12, trim, 0, 1.58, 0.33, g);
+  box(0.72 * b, 0.36, 0.68, main, 0, 1.95, 0, g);
+  box(1.25 * b, 1.0, 0.78, acc, 0, 2.4, 0, g);
+  for (const s of [-1, 1]) box(0.36, 0.26, 0.08, fin, 0.3 * s, 2.5, 0.41, g); // chest vents
+  // head
+  const head = new THREE.Group(); head.position.set(0, 3.15, 0.02); g.add(head);
+  box(0.46, 0.44, 0.48, main, 0, 0, 0, head);
+  box(0.36, 0.09, 0.04, visor, 0, 0.02, 0.25, head);
+  box(0.16, 0.12, 0.06, trim, 0, -0.15, 0.25, head);
+  box(0.09, 0.1, 0.06, trim, 0, 0.19, 0.26, head);
+  for (const s of [-1, 1]) {
+    const f = box(0.06, 0.6, 0.06, finBright, 0.16 * s, 0.34, 0.26, head); f.rotation.z = -s * 0.95;
+    box(0.06, 0.22, 0.2, main, 0.25 * s, 0.02, 0, head);
+  }
+  g.userData.head = head;
+  // shoulders & arms
+  for (const s of [-1, 1]) {
+    const x = 0.98 * s * b;
+    box(0.62 * b, 0.55, 0.8, main, x, 2.66, 0, g);
+    box(0.64 * b, 0.12, 0.82, acc, x, 2.95, 0, g);
+    box(0.3, 0.55, 0.32, dark, x, 2.08, 0, g);
+    box(0.42, 0.75, 0.44, main, x, 1.5, 0.05, g);
+    box(0.28, 0.26, 0.28, dark, x, 1.0, 0.1, g);
+  }
+  // backpack & thrusters (back = -z)
+  box(0.86, 0.86, 0.45, dark, 0, 2.45, -0.58, g);
+  const thrusters = [];
+  for (const s of [-1, 1]) {
+    const t = cyl(0.15, 0.2, 0.55, MS(0x8a90a0), 0.26 * s, 2.0, -0.84, g); t.rotation.x = -0.35;
+    const fl = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.9, 8), glow); fl.position.set(0.26 * s, 1.55, -1.02); fl.rotation.x = Math.PI - 0.35; g.add(fl);
+    thrusters.push(fl);
+  }
+  g.userData.thrusters = thrusters;
+  // rifle in the right hand (mech's right = -x while facing +z)
+  const rx = -0.98 * b;
+  box(0.2, 0.24, 1.4, dark, rx, 1.05, 0.6, g);
+  box(0.12, 0.12, 0.5, MS(0x9aa3b5), rx, 1.1, 1.5, g);
+  const muzzle = new THREE.Object3D(); muzzle.position.set(rx, 1.1, 1.8); g.add(muzzle);
+  g.userData.muzzle = muzzle;
+  // shield on the left arm
+  if (def.id === "starter" || def.id === "guardian") {
+    const sh = box(0.12, 1.25 * b, 0.8 * b, trim, 1.35 * b, 1.55, 0.15, g);
+    box(0.14, 0.9 * b, 0.12, MS(c.fin), 1.36 * b, 1.6, 0.15, g);
+    sh.rotation.z = 0.05;
+  }
+  if (def.id === "guardian") { for (const s of [-1, 1]) cyl(0.14, 0.14, 1.3, dark, 0.45 * s, 3.1, -0.55, g); } // shoulder cannons
+  if (def.id === "striker") { for (const s of [-1, 1]) { const w = box(0.08, 0.3, 1.2, trim, 0.62 * s, 2.7, -0.8, g); w.rotation.x = -0.5; } }
+  if (def.id === "phantom") {
+    for (const s of [-1, 1]) { const cape = box(0.06, 1.8, 0.9, acc, 1.28 * s, 2.0, -0.35, g); cape.rotation.z = s * 0.12; }
+  }
+  if (def.id === "seraph") {
+    const wingMat = MS(0xffffff, { metalness: 0.2, roughness: 0.35 }), tipMat = MS(c.accent);
+    const wings = [];
+    for (const s of [-1, 1]) {
+      for (let pair = 0; pair < 2; pair++) {
+        const wing = new THREE.Group();
+        wing.position.set(0.32 * s, 2.75 - pair * 0.35, -0.8);
+        wing.rotation.set(0, s * 0.35, s * (pair === 0 ? 0.55 : 1.2));
+        g.add(wing);
+        for (let f = 0; f < 5; f++) {
+          const len = 1.6 + f * 0.25 - pair * 0.3;
+          const feather = new THREE.Group(); feather.rotation.z = s * (f * 0.13); wing.add(feather);
+          box(0.3, len, 0.06, wingMat, 0.12 * s, len / 2, -f * 0.03, feather);
+          box(0.3, 0.35, 0.07, tipMat, 0.12 * s, len - 0.1, -f * 0.03, feather);
+        }
+        wings.push({ g: wing, s, base: wing.rotation.z });
+      }
+    }
+    g.userData.wings = wings;
+    // twin buster rifle (two barrels)
+    for (const s of [-0.18, 0.18]) { const barrel = cyl(0.11, 0.11, 2.0, MS(0xdfe4ee), rx + s, 1.15, 1.2, g); barrel.rotation.x = Math.PI / 2; }
+    box(0.16, 0.5, 0.16, MS(c.trim), 0, 2.75, 0.4, g); // chest core
+  }
+  g.traverse(o => { if (o.isMesh) o.castShadow = false; });
+  return g;
+}
+
+/* Enemy templates face +z. */
+const TEMPLATES = {};
+const TAG_OFFSET = { grunt: 4.9, drone: 4.1, heavy: 4.7 }; // label height above each enemy type
+function buildTemplates() {
+  // grunt: mono-eye mass-production mech (original design)
+  {
+    const g = new THREE.Group(), body = MS(0x557d4a), dark = MS(0x2e3a2b), eye = MB(0xff2d6f);
+    box(1.1, 0.95, 0.8, body, 0, 2.2, 0, g);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), body); head.position.set(0, 3.0, 0); head.scale.set(1, 0.9, 1.05); g.add(head);
+    box(0.6, 0.1, 0.1, MB(0x111111), 0, 3.0, 0.4, g);
+    const e = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), eye); e.position.set(0.1, 3.0, 0.44); g.add(e);
+    for (const s of [-1, 1]) {
+      box(0.55, 0.5, 0.7, body, 0.85 * s, 2.55, 0, g);
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.4, 6), dark); spike.position.set(0.95 * s, 2.95, 0); g.add(spike);
+      box(0.3, 1.1, 0.35, dark, 0.85 * s, 1.75, 0.05, g);
+      box(0.42, 1.3, 0.5, body, 0.3 * s, 0.95, 0, g);
+      box(0.46, 0.2, 0.75, dark, 0.3 * s, 0.25, 0.1, g);
+    }
+    box(0.18, 0.18, 1.2, dark, -0.85, 1.35, 0.55, g);
+    g.scale.setScalar(1.3);
+    TEMPLATES.grunt = g;
+  }
+  // drone
+  {
+    const g = new THREE.Group();
+    const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.75), MS(0x8a92a8, { metalness: 0.7, roughness: 0.3 })); core.position.y = 2; g.add(core);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), MB(0xff4455)); eye.position.set(0, 2, 0.6); g.add(eye);
+    const r = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.08, 6, 20), MS(0xffaa33)); r.position.y = 2; r.rotation.x = Math.PI / 2; g.add(r);
+    r.name = "spin"; // looked up by name after clone() (clone deep-copies userData via JSON)
+    g.scale.setScalar(1.4);
+    TEMPLATES.drone = g;
+  }
+  // heavy
+  {
+    const g = new THREE.Group(), body = MS(0x5a3d7a), dark = MS(0x25192f), eye = MB(0xffd23c);
+    box(2.0, 1.2, 1.5, body, 0, 2.0, 0, g);
+    box(1.0, 0.25, 0.1, eye, 0, 2.2, 0.78, g);
+    for (const s of [-1, 1]) {
+      const cn = cyl(0.2, 0.25, 1.8, dark, 0.8 * s, 2.7, 0.5, g); cn.rotation.x = Math.PI / 2;
+      for (const z of [-0.5, 0.5]) { const leg = box(0.25, 1.4, 0.25, dark, 1.1 * s, 1.0, z, g); leg.rotation.z = s * 0.4; }
+    }
+    g.scale.setScalar(1.5);
+    TEMPLATES.heavy = g;
+  }
+  // boss: mobile armor
+  {
+    const g = new THREE.Group(), body = MS(0x7a1f2b, { metalness: 0.5 }), dark = MS(0x241018), gold = MS(0xd4a01c, { metalness: 0.8, roughness: 0.25 });
+    const hull = new THREE.Mesh(new THREE.SphereGeometry(2.4, 16, 12), body); hull.scale.set(1.6, 0.8, 1.2); g.add(hull);
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 12), MB(0xff3355)); core.position.set(0, 0, 2.7); g.add(core);
+    core.name = "core";
+    const rng = new THREE.Mesh(new THREE.TorusGeometry(3.6, 0.22, 8, 32), gold); rng.rotation.x = Math.PI / 2; g.add(rng);
+    rng.name = "ring";
+    for (const s of [-1, 1]) {
+      const arm = new THREE.Group(); arm.position.set(3.4 * s, -0.2, 0.5); g.add(arm);
+      box(0.8, 0.8, 3.6, dark, 0, 0, 0.8, arm);
+      for (const d of [-1, 1]) { const claw = box(0.25, 0.25, 1.6, gold, 0.3 * d, 0, 3.1, arm); claw.rotation.y = -d * 0.35; }
+      const pod = cyl(0.5, 0.5, 1.2, dark, 2.2 * s, 1.6, 0, g); pod.rotation.z = Math.PI / 2;
+    }
+    for (let i = -2; i <= 2; i++) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), MB(0xffe066)); e.position.set(i * 0.5, 0.9, 2.4 - Math.abs(i) * 0.15); g.add(e); }
+    g.scale.setScalar(1.7);
+    TEMPLATES.boss = g;
+  }
+  // missile
+  {
+    const g = new THREE.Group();
+    const b = cyl(0.14, 0.14, 1.0, MS(0xdddddd), 0, 0, 0, g); b.rotation.x = Math.PI / 2;
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.4, 8), MS(0xff3344)); tip.rotation.x = Math.PI / 2; tip.position.z = 0.7; g.add(tip);
+    const fl = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.7, 8), MB(0xffaa33, { transparent: true, opacity: 0.85 })); fl.rotation.x = -Math.PI / 2; fl.position.z = -0.85; g.add(fl);
+    g.scale.setScalar(2);
+    TEMPLATES.missile = g;
+  }
+}
+buildTemplates();
+
+/* ---------- effects ---------- */
+const effects = [];
+const beamGeo = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true);
+function beam(from, to, color, width, life) {
+  const mat = MB(color, { transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
+  const m = new THREE.Mesh(beamGeo, mat);
+  const dir = new V3().subVectors(to, from); const len = dir.length();
+  m.position.copy(from).addScaledVector(dir, 0.5);
+  m.quaternion.setFromUnitVectors(new V3(0, 1, 0), dir.normalize());
+  m.scale.set(width, len, width);
+  scene.add(m);
+  effects.push({ obj: m, life, max: life, kind: "beam", w: width });
+}
+function explode(pos, color, count, size, speed) {
+  count = S.prefs.quality === "high" ? count : Math.ceil(count / 2);
+  const posArr = new Float32Array(count * 3), vel = [];
+  for (let i = 0; i < count; i++) {
+    posArr.set([pos.x, pos.y, pos.z], i * 3);
+    const v = new V3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(speed * (0.3 + Math.random()));
+    vel.push(v);
+  }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(posArr, 3));
+  const mat = new THREE.PointsMaterial({ color, size, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false });
+  const p = new THREE.Points(geo, mat); scene.add(p);
+  effects.push({ obj: p, life: 0.9, max: 0.9, kind: "burst", vel });
+  const flash = new THREE.Mesh(new THREE.SphereGeometry(size * 3, 10, 8), MB(0xffffff, { transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+  flash.position.copy(pos); scene.add(flash);
+  effects.push({ obj: flash, life: 0.25, max: 0.25, kind: "flash" });
+}
+function updateEffects(dt) {
+  for (let i = effects.length - 1; i >= 0; i--) {
+    const e = effects[i]; e.life -= dt;
+    const k = Math.max(0, e.life / e.max);
+    if (e.kind === "beam") { e.obj.material.opacity = k; e.obj.scale.x = e.obj.scale.z = e.w * (0.4 + k * 0.6); }
+    else if (e.kind === "burst") {
+      const a = e.obj.geometry.attributes.position;
+      for (let j = 0; j < e.vel.length; j++) { a.array[j * 3] += e.vel[j].x * dt; a.array[j * 3 + 1] += e.vel[j].y * dt; a.array[j * 3 + 2] += e.vel[j].z * dt; }
+      a.needsUpdate = true; e.obj.material.opacity = k;
+    } else if (e.kind === "flash") { e.obj.material.opacity = k; e.obj.scale.setScalar(1 + (1 - k) * 1.5); }
+    if (e.life <= 0) { scene.remove(e.obj); if (e.obj.geometry !== beamGeo) e.obj.geometry.dispose(); e.obj.material.dispose(); effects.splice(i, 1); }
+  }
+}
+
+/* ---------- camera / modes ---------- */
+let mode = "hangar"; // hangar | game | idle
+let previewMech = null, previewMechId = null;
+function setPreviewMech(id) {
+  if (previewMechId === id && previewMech) return;
+  if (previewMech) scene.remove(previewMech);
+  previewMech = buildMech(MECH_BY_ID[id]); previewMechId = id;
+  previewMech.position.set(0, 0, 0);
+  scene.add(previewMech);
+  previewMech.visible = mode === "hangar";
+}
+function render3DMode() {
+  const scr = S.currentScreen;
+  if (document.body.classList.contains("playing")) mode = "game";
+  else if (scr === "scr-hangar" || scr === "scr-login" || scr === "scr-profile" || scr === "scr-result") mode = "hangar";
+  else mode = "idle";
+  if (previewMech) previewMech.visible = mode === "hangar";
+  if (G.player) G.player.visible = mode === "game";
+  canvas.style.visibility = mode === "idle" ? "hidden" : "visible";
+}
+
+function viewSize() {
+  const vv = window.visualViewport;
+  return { w: window.innerWidth, h: document.body.classList.contains("playing") && vv ? Math.round(vv.height) : window.innerHeight };
+}
+function resize() {
+  if (!renderer) return;
+  const { w, h } = viewSize();
+  renderer.setSize(w, h, false);
+  canvas.style.height = h + "px";
+  $("#labels").style.height = h + "px";
+  camera.aspect = w / h;
+  camera.fov = camera.aspect < 0.8 ? 72 : 55;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener("resize", resize);
+if (window.visualViewport) window.visualViewport.addEventListener("resize", resize);
+
+/* =====================================================================
+ *  GAME
+ * ===================================================================== */
+const G = { player: null };
+const typer = $("#typer");
+
+function pools(bankId) {
+  const words = WORD_BANKS[bankId].words.slice().sort((a, b) => a.length - b.length);
+  const n = words.length, third = Math.ceil(n / 3);
+  let missile = words.filter(w => w.length <= 5);
+  if (missile.length < 10) missile = WORD_BANKS.everyday.words.filter(w => w.length <= 5);
+  return { short: words.slice(0, third), mid: words.slice(third, 2 * third), long: words.slice(2 * third), missile, all: words };
+}
+
+function startGame() {
+  resetGame();
+  document.body.classList.add("playing");
+  $$(".screen").forEach(s => s.classList.remove("show"));
+  S.currentScreen = "game";
+  render3DMode();
+  resize();
+  focusTyper();
+  beginStage(1);
+}
+
+function resetGame() {
+  clearTargets();
+  if (G.player) scene.remove(G.player);
+  const mech = MECH_BY_ID[wallet().selected] || MECHS[0];
+  Object.assign(G, {
+    mech, diffName: S.prefs.diff, diff: DIFF[S.prefs.diff], bank: S.prefs.bank, pools: pools(S.prefs.bank),
+    targets: [], lock: null, stage: 1, phase: "intro", phaseT: 0, spawnT: 0, stageKills: 0,
+    hp: mech.hp, maxHp: mech.hp, shieldOn: false, freezeT: 0, items: { bomb: 0, freeze: 0, shield: 0 }, buster: 0,
+    score: 0, combo: 0, maxCombo: 0, kills: 0, bosses: 0, coins: 0,
+    correct: 0, keystrokes: 0, mistakes: {}, time: 0, activeTime: 0, paused: false, over: false,
+    boss: null, shake: 0, perfT: 0, perfN: 0, perfChecked: false,
+  });
+  G.player = buildMech(mech);
+  G.player.rotation.y = Math.PI;
+  G.player.scale.setScalar(0.85);
+  scene.add(G.player);
+  if (G.shieldMesh) scene.remove(G.shieldMesh);
+  G.shieldMesh = new THREE.Mesh(new THREE.SphereGeometry(2.4, 20, 14), MB(0x8fe3ff, { transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false }));
+  G.shieldMesh.position.set(0, 2, 0); G.shieldMesh.visible = false; scene.add(G.shieldMesh);
+  $("#buster-btn").style.display = mech.special ? "" : "none";
+  updateHud();
+}
+
+function stageFactor() { return Math.max(0.5, Math.pow(0.92, G.stage - 1)); }
+
+function beginStage(n) {
+  G.stage = n; G.stageKills = 0; G.phase = "intro"; G.phaseT = 2.2;
+  showMsg(`STAGE ${n}`, `Destroy ${G.diff.kills + 2 * n} enemies`);
+  updateHud();
+}
+
+function showMsg(text, sub, warn) {
+  const el = $("#hud-msg");
+  el.innerHTML = esc(text) + (sub ? `<small>${esc(sub)}</small>` : "");
+  el.classList.toggle("warn", !!warn);
+  el.classList.add("show");
+}
+function hideMsg() { $("#hud-msg").classList.remove("show", "warn"); }
+
+function firstLettersInUse() { return new Set(G.targets.filter(t => t.alive).map(t => t.word[0])); }
+function pickWord(pool) {
+  const used = firstLettersInUse(), onScreen = new Set(G.targets.map(t => t.word));
+  let w = null;
+  for (let i = 0; i < 40; i++) {
+    const c = pool[Math.floor(Math.random() * pool.length)];
+    if (onScreen.has(c)) continue;
+    w = c;
+    if (!used.has(c[0])) return c;
+  }
+  return w || pool[Math.floor(Math.random() * pool.length)];
+}
+
+function makeTag(t) {
+  const el = document.createElement("div");
+  el.className = "tag" + (t.kind === "missile" ? " missile" : t.kind === "boss" ? " boss" : "");
+  $("#labels").appendChild(el);
+  t.el = el; renderTag(t);
+}
+function renderTag(t) {
+  t.el.innerHTML = `<span class="done">${esc(t.word.slice(0, t.typed))}</span>${esc(t.word.slice(t.typed))}`;
+  if (!t.w || t.typed === 0) { t.w = t.el.offsetWidth; t.h = t.el.offsetHeight; } // cached for overlap checks
+}
+
+function addTarget(t) {
+  Object.assign(t, { alive: true, typed: 0, progress: t.progress || 0, pos: new V3() });
+  scene.add(t.mesh);
+  makeTag(t);
+  G.targets.push(t);
+  return t;
+}
+
+function removeTarget(t) {
+  t.alive = false;
+  if (t.el) t.el.remove();
+  if (t.mesh && t.kind !== "boss") scene.remove(t.mesh);
+  const i = G.targets.indexOf(t); if (i >= 0) G.targets.splice(i, 1);
+  if (G.lock === t) G.lock = null;
+}
+function clearTargets() {
+  if (!G.targets) return;
+  for (const t of G.targets.slice()) { removeTarget(t); if (t.kind === "boss") scene.remove(t.mesh); }
+  if (G.boss) { scene.remove(G.boss.mesh); G.boss = null; }
+}
+
+function spawnEnemy() {
+  const d = G.diff, r = Math.random();
+  const type = r < d.drone ? "drone" : r < d.drone + d.heavy ? "heavy" : "grunt";
+  const pool = type === "drone" ? G.pools.short : type === "heavy" ? G.pools.long : G.pools.mid;
+  const word = pickWord(pool);
+  const range = Math.min(40, Math.max(13, camera.aspect * 24));
+  // spread enemies out so labels don't overlap
+  let x = 0;
+  for (let i = 0; i < 8; i++) {
+    x = (Math.random() * 2 - 1) * range;
+    if (!G.targets.some(t => t.kind === "enemy" && t.progress < 0.3 && Math.abs(t.start.x - x) < range * 0.3)) break;
+  }
+  const y = 2 + Math.random() * (camera.aspect < 0.8 ? 18 : 6); // tall phone screens: spread vertically
+  const start = new V3(x, y, -95), end = new V3(x * 0.12, 2.2, 1.5);
+  const travel = d.travel * stageFactor() * (type === "heavy" ? 1.3 : type === "drone" ? 0.85 : 1) * (0.9 + Math.random() * 0.2);
+  const mesh = TEMPLATES[type].clone();
+  addTarget({ kind: "enemy", type, word, mesh, start, end, travel, wob: Math.random() * 6, spin: mesh.getObjectByName("spin") });
+}
+
+function spawnBoss() {
+  const d = G.diff;
+  const mesh = TEMPLATES.boss.clone();
+  const hp = d.bossHp + 2 * (G.stage - 1);
+  G.boss = { mesh, hp, maxHp: hp, atkT: d.bossAtk, enter: 0, name: BOSS_NAMES[(G.stage - 1) % BOSS_NAMES.length],
+    ring: mesh.getObjectByName("ring"), core: mesh.getObjectByName("core") };
+  mesh.position.set(0, 9, -140);
+  const t = addTarget({ kind: "boss", word: pickWord(G.pools.long), mesh, progress: 0.25 });
+  G.boss.target = t;
+  $("#bossbar").classList.add("show");
+  $("#boss-name").textContent = `STAGE ${G.stage} BOSS — ${G.boss.name}`;
+  updateHud();
+}
+
+function spawnMissile() {
+  const b = G.boss; if (!b) return;
+  const start = b.mesh.position.clone().add(new V3((Math.random() - 0.5) * 6, -1, 2));
+  const end = new V3((Math.random() - 0.5) * 1.5, 2.4, 1.2);
+  const travel = G.diff.missileTime * Math.sqrt(stageFactor()) * (G.mech.missileSlow || 1);
+  addTarget({ kind: "missile", word: pickWord(G.pools.missile), mesh: TEMPLATES.missile.clone(), start, end, travel, wob: Math.random() * 6 });
+}
+
+function killsGoal() { return G.diff.kills + 2 * G.stage; }
+
+function update(dt) {
+  G.time += dt;
+  const frozen = G.freezeT > 0;
+  if (frozen) { G.freezeT -= dt; if (G.freezeT <= 0) document.body.classList.remove("frozen"); }
+  if (G.phase === "wave" || G.phase === "boss") G.activeTime += dt;
+
+  // phases
+  if (G.phase === "intro") {
+    G.phaseT -= dt;
+    if (G.phaseT <= 0) { hideMsg(); G.phase = "wave"; G.spawnT = 0.3; }
+  } else if (G.phase === "wave") {
+    const enemies = G.targets.filter(t => t.kind === "enemy").length;
+    if (G.stageKills >= killsGoal()) {
+      if (enemies === 0) { G.phase = "bossIntro"; G.phaseT = 2.6; showMsg("WARNING", "BOSS APPROACHING", true); sfx("boss"); }
+    } else if (!frozen) {
+      G.spawnT -= dt;
+      const d = G.diff, interval = d.spawn * stageFactor();
+      const need = G.stageKills + enemies < killsGoal();
+      // spawn on the timer, or sooner when the screen is nearly empty (so fast typists are never kept waiting)
+      const due = G.spawnT <= 0 || (enemies < d.minActive && G.spawnT <= interval - 0.6);
+      if (need && due && enemies < d.maxActive) { spawnEnemy(); G.spawnT = interval; }
+    }
+  } else if (G.phase === "bossIntro") {
+    G.phaseT -= dt;
+    if (G.phaseT <= 0) { hideMsg(); spawnBoss(); G.phase = "boss"; }
+  } else if (G.phase === "boss") {
+    const b = G.boss;
+    if (b && !frozen) {
+      b.enter = Math.min(1, b.enter + dt / 2.5);
+      b.atkT -= dt;
+      if (b.atkT <= 0 && b.enter >= 1) { spawnMissile(); b.atkT = G.diff.bossAtk * Math.sqrt(stageFactor()) * (G.mech.missileSlow ? 1.15 : 1); }
+    }
+  } else if (G.phase === "clear") {
+    G.phaseT -= dt;
+    if (G.phaseT <= 0) beginStage(G.stage + 1);
+  }
+
+  // move targets
+  for (const t of G.targets.slice()) {
+    if (t.kind === "boss") {
+      const b = G.boss, e = b.enter, m = t.mesh;
+      m.position.set(Math.sin(G.time * 0.5) * 6 * e, 8 + Math.sin(G.time * 1.3) * 0.8, -140 + (140 - 52) * (1 - Math.pow(1 - e, 3)));
+      m.rotation.y = Math.sin(G.time * 0.4) * 0.3;
+      b.ring.rotation.z += dt * 0.8;
+      b.core.scale.setScalar(1 + Math.sin(G.time * 6) * 0.12);
+      t.pos.copy(m.position).add(new V3(0, 5.8, 0));
+      continue;
+    }
+    if (!frozen) t.progress += dt / t.travel;
+    const k = Math.min(1, t.progress);
+    t.mesh.position.lerpVectors(t.start, t.end, k);
+    if (t.kind === "enemy") {
+      t.mesh.position.x += Math.sin(G.time * 1.4 + t.wob) * 1.2 * (1 - k);
+      t.mesh.position.y += Math.sin(G.time * 2 + t.wob) * 0.35;
+      if (t.spin) t.spin.rotation.z += dt * 3;
+      t.mesh.lookAt(0, 2, 6);
+      t.pos.copy(t.mesh.position).add(new V3(0, TAG_OFFSET[t.type], 0));
+    } else {
+      t.mesh.position.x += Math.sin(G.time * 3 + t.wob) * 0.6 * (1 - k);
+      t.mesh.lookAt(t.end);
+      t.pos.copy(t.mesh.position).add(new V3(0, 1.0, 0));
+    }
+    if (t.progress >= 1) hitPlayer(t);
+  }
+
+  // player idle motion
+  const p = G.player;
+  if (p) {
+    p.position.y = Math.sin(G.time * 2) * 0.12;
+    const aim = G.lock ? Math.atan2(G.lock.mesh.position.x, -(G.lock.mesh.position.z - 0)) * 0.35 : 0;
+    p.rotation.y += ((Math.PI - aim) - p.rotation.y) * Math.min(1, dt * 6);
+    for (const th of p.userData.thrusters) th.scale.y = 0.8 + Math.random() * 0.5;
+    if (p.userData.wings) for (const w of p.userData.wings) w.g.rotation.z = w.base + Math.sin(G.time * 2) * 0.06 * w.s;
+    G.shieldMesh.visible = G.shieldOn;
+    if (G.shieldOn) G.shieldMesh.rotation.y += dt;
+  }
+  if (G.shake > 0) G.shake = Math.max(0, G.shake - dt);
+
+  // perf auto-downgrade
+  if (!G.perfChecked && G.time > 1) {
+    G.perfT += dt; G.perfN++;
+    if (G.perfT > 4) {
+      G.perfChecked = true;
+      if (G.perfT / G.perfN > 1 / 32 && S.prefs.quality === "high") { S.prefs.quality = "low"; savePrefs(); applyQuality(); floater(window.innerWidth / 2, 120, "Graphics set to LOW for smoother play", "#8fe3ff"); }
+    }
+  }
+  updateHudLive();
+}
+
+function hitPlayer(t) {
+  explode(t.mesh.position, t.kind === "missile" ? 0xff7744 : 0xff5555, 40, 0.35, 8);
+  removeTarget(t);
+  if (G.shieldOn) { G.shieldOn = false; sfx("item"); floater(window.innerWidth / 2, window.innerHeight * 0.6, "SHIELD BLOCKED!", "#8fe3ff"); return; }
+  G.hp -= 1; G.combo = 0; if (!G.mech.special || G.buster < 5) G.buster = 0;
+  G.shake = 0.45; sfx("hit");
+  const f = $("#flash"); f.classList.add("on"); setTimeout(() => f.classList.remove("on"), 60);
+  updateHud();
+  if (G.hp <= 0) endGame(true);
+}
+
+/* ---------- typing ---------- */
+function threat(t) { return t.kind === "boss" ? 0.2 : t.progress; }
+function handleChar(ch) {
+  if (G.over || G.paused || !document.body.classList.contains("playing")) return;
+  if (ch === " ") { fireBuster(); return; }
+  if (ch === "1") return useItem("bomb");
+  if (ch === "2") return useItem("freeze");
+  if (ch === "3") return useItem("shield");
+  if (!/^[a-zA-Z'\-]$/.test(ch)) return;
+  if (G.phase !== "wave" && G.phase !== "boss") return;
+  ch = ch.toLowerCase();
+  G.keystrokes++;
+  let t = G.lock;
+  if (!t) {
+    const cands = G.targets.filter(x => x.alive && x.word[0] === ch && !(x.kind === "boss" && G.boss && G.boss.enter < 1));
+    if (!cands.length) { miss(null); return; }
+    t = cands.reduce((a, b) => threat(b) > threat(a) ? b : a);
+    G.lock = t; t.el.classList.add("locked");
+  }
+  if (t.word[t.typed] === ch) {
+    t.typed++; G.correct++; renderTag(t); sfx("key");
+    shoot(t, false);
+    if (t.typed >= t.word.length) completeWord(t);
+  } else miss(t);
+}
+
+function miss(t) {
+  G.combo = 0;
+  if (G.mech.special && G.buster < 5) G.buster = 0;
+  sfx("err");
+  if (t) {
+    G.mistakes[t.word] = (G.mistakes[t.word] || 0) + 1;
+    t.el.classList.remove("shake"); void t.el.offsetWidth; t.el.classList.add("shake");
+  }
+  updateHud();
+}
+
+function releaseLock() {
+  if (!G.lock) return;
+  G.lock.typed = 0; renderTag(G.lock); G.lock.el.classList.remove("locked"); G.lock = null;
+}
+
+function muzzlePos() { const v = new V3(); if (G.player) G.player.userData.muzzle.getWorldPosition(v); return v; }
+function shoot(t, big) {
+  const target = t.kind === "boss" ? t.mesh.position.clone().add(new V3(0, 0, 4.5)) : t.mesh.position.clone().add(new V3(0, t.kind === "missile" ? 0 : 2.6, 0));
+  beam(muzzlePos(), target, big ? 0xffe066 : 0x6fe8ff, big ? 0.18 : 0.05, big ? 0.22 : 0.08);
+}
+
+function completeWord(t) {
+  G.combo++; G.maxCombo = Math.max(G.maxCombo, G.combo);
+  if (G.mech.special) G.buster = Math.min(5, G.buster + 1);
+  const comboMult = Math.min(2, 1 + G.combo * 0.05);
+  shoot(t, true);
+  if (t.kind === "boss") {
+    damageBoss(1);
+    G.score += Math.round(t.word.length * 15 * comboMult * G.diff.mult);
+  } else {
+    destroyTarget(t, true);
+  }
+  G.lock = null;
+  updateHud();
+}
+
+function destroyTarget(t, byTyping) {
+  const col = t.kind === "missile" ? 0xffaa44 : t.type === "heavy" ? 0xc58bff : t.type === "drone" ? 0xffcc66 : 0x7dff9a;
+  explode(t.mesh.position.clone().add(new V3(0, t.kind === "missile" ? 0 : 2, 0)), col, t.type === "heavy" ? 70 : 45, 0.3, 9);
+  sfx("kill");
+  const screen = project(t.pos);
+  removeTarget(t);
+  if (t.kind === "enemy") { G.kills++; G.stageKills++; }
+  const comboMult = Math.min(2, 1 + G.combo * 0.05);
+  const pts = Math.round(t.word.length * 10 * (byTyping ? comboMult : 0.5) * G.diff.mult);
+  G.score += pts;
+  if (t.kind === "enemy") {
+    const c = Math.max(1, Math.round(Math.ceil(t.word.length / 2) * G.diff.mult * (G.mech.coinMult || 1)));
+    G.coins += c;
+    if (screen) floater(screen.x, screen.y, `+${c} 🪙`);
+    if (Math.random() < 0.08 * (G.mech.dropMult || 1)) dropItem(screen);
+  }
+}
+
+function dropItem(screen) {
+  const kinds = ["bomb", "freeze", "shield"].filter(k => G.items[k] < 3);
+  if (!kinds.length) return;
+  const k = kinds[Math.floor(Math.random() * kinds.length)];
+  G.items[k]++;
+  sfx("item");
+  const icon = { bomb: "💣", freeze: "❄️", shield: "🛡️" }[k];
+  if (screen) floater(screen.x, screen.y - 26, `+${icon} ${k.toUpperCase()}`, "#8fe3ff");
+  updateHud();
+}
+
+function damageBoss(n) {
+  const b = G.boss; if (!b) return;
+  b.hp = Math.max(0, b.hp - n);
+  explode(b.mesh.position.clone().add(new V3((Math.random() - 0.5) * 4, 0, 2.5)), 0xff8844, 50, 0.45, 10);
+  sfx("kill");
+  if (b.hp <= 0) return defeatBoss();
+  const t = b.target;
+  t.word = pickWord(G.pools.long); t.typed = 0; t.el.classList.remove("locked"); renderTag(t);
+  updateHud();
+}
+
+function defeatBoss() {
+  const b = G.boss;
+  for (let i = 0; i < 6; i++) setTimeout(() => explode(b.mesh.position.clone().add(new V3((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 3, 1)), i % 2 ? 0xffcc44 : 0xff5533, 80, 0.6, 14), i * 140);
+  setTimeout(() => { scene.remove(b.mesh); }, 900);
+  for (const t of G.targets.slice()) if (t.kind === "missile") destroyTarget(t, false);
+  removeTarget(b.target);
+  G.boss = null; G.bosses++;
+  const c = Math.round((20 + 10 * G.stage) * G.diff.mult * (G.mech.coinMult || 1));
+  G.coins += c; G.score += 500 * G.stage;
+  G.hp = Math.min(G.maxHp, G.hp + 1);
+  $("#bossbar").classList.remove("show");
+  G.phase = "clear"; G.phaseT = 3.2;
+  showMsg("STAGE CLEAR!", `+${c} coins · +1 ♥`);
+  sfx("clear");
+  updateHud();
+}
+
+function useItem(k) {
+  if (G.over || G.paused || G.items[k] <= 0) return;
+  if (G.phase !== "wave" && G.phase !== "boss") return;
+  if (k === "shield" && G.shieldOn) return;
+  G.items[k]--;
+  if (k === "bomb") {
+    const list = G.targets.filter(t => t.kind !== "boss");
+    for (const t of list) destroyTarget(t, false);
+    const f = $("#flash"); f.style.background = "rgba(255,255,255,.7)"; f.classList.add("on");
+    setTimeout(() => { f.classList.remove("on"); setTimeout(() => f.style.background = "", 400); }, 80);
+    sfx("buster");
+  } else if (k === "freeze") { G.freezeT = 5; document.body.classList.add("frozen"); sfx("item"); }
+  else if (k === "shield") { G.shieldOn = true; sfx("item"); }
+  updateHud();
+}
+
+function fireBuster() {
+  if (!G.mech.special || G.buster < 5) return;
+  if (G.phase !== "wave" && G.phase !== "boss") return;
+  G.buster = 0;
+  const list = G.targets.filter(t => t.kind !== "boss").sort((a, b) => b.progress - a.progress).slice(0, 3);
+  const from = muzzlePos();
+  for (const t of list) { beam(from, t.mesh.position.clone().add(new V3(0, 1.5, 0)), 0xfff2a8, 0.5, 0.5); destroyTarget(t, true); }
+  if (list.length < 3 && G.boss) { beam(from, G.boss.mesh.position.clone(), 0xfff2a8, 0.9, 0.6); damageBoss(2); }
+  G.shake = 0.3; sfx("buster");
+  updateHud();
+}
+
+/* ---------- HUD ---------- */
+function project(v) {
+  const p = v.clone().project(camera);
+  if (p.z > 1) return null;
+  const { w, h } = viewSize();
+  return { x: (p.x + 1) / 2 * w, y: (1 - p.y) / 2 * h };
+}
+function floater(x, y, text, color) {
+  const el = document.createElement("div");
+  el.className = "floater"; el.textContent = text;
+  el.style.left = x + "px"; el.style.top = y + "px"; el.style.transform = "translate(-50%,0)";
+  if (color) el.style.color = color;
+  $("#labels").appendChild(el);
+  setTimeout(() => el.remove(), 1000);
+}
+function currentWpm() { return G.activeTime > 3 ? (G.correct / 5) / (G.activeTime / 60) : 0; }
+function updateHud() {
+  const hearts = [];
+  for (let i = 0; i < G.maxHp; i++) hearts.push(i < G.hp ? "♥" : '<span class="empty">♥</span>');
+  $("#hud-hearts").innerHTML = hearts.join("") + (G.shieldOn ? ' <span class="shield">🛡️</span>' : "");
+  $("#hud-stage").textContent = `STAGE ${G.stage} · ${G.diffName.toUpperCase()}`;
+  $("#hud-score").textContent = G.score;
+  $("#hud-combo").textContent = G.combo;
+  for (const b of $$(".item-btn[data-item]")) {
+    const k = b.dataset.item;
+    if (k === "buster") { b.querySelector(".n").textContent = G.buster + "/5"; b.classList.toggle("ready", G.buster >= 5); b.classList.toggle("empty", G.buster < 5); continue; }
+    b.querySelector(".n").textContent = G.items[k];
+    b.classList.toggle("empty", G.items[k] <= 0);
+  }
+  if (G.boss) $("#boss-fill").style.width = (100 * G.boss.hp / G.boss.maxHp) + "%";
+}
+function updateHudLive() { $("#hud-wpm").textContent = Math.round(currentWpm()); }
+
+function positionTags() {
+  const { w, h } = viewSize();
+  const v = new V3();
+  const items = [];
+  for (const t of G.targets) {
+    v.copy(t.pos).project(camera);
+    if (v.z > 1) { t.el.style.display = "none"; continue; }
+    t.el.style.display = "";
+    const dist = camera.position.distanceTo(t.pos);
+    const s = t.kind === "boss" ? 1 : Math.max(0.7, Math.min(1.25, 1.35 - dist / 110));
+    items.push({ t, x: (v.x + 1) / 2 * w, y: (1 - v.y) / 2 * h, s, w: (t.w || 60) * s, h: (t.h || 26) * s });
+  }
+  // most dangerous labels keep their spot; the others are nudged upward so words never overlap
+  items.sort((a, b) => (b.t === G.lock) - (a.t === G.lock) || threat(b.t) - threat(a.t));
+  const placed = [];
+  for (const it of items) {
+    for (let k = 0; k < 10; k++) {
+      const hit = placed.find(p => Math.abs(p.x - it.x) < (p.w + it.w) / 2 + 4 && Math.abs(p.y - it.y) < Math.max(p.h, it.h) + 2);
+      if (!hit) break;
+      it.y = hit.y - hit.h - 3;
+    }
+    placed.push(it);
+    it.t.el.style.transform = `translate(${it.x.toFixed(1)}px, ${it.y.toFixed(1)}px) translate(-50%, -100%) scale(${it.s.toFixed(3)})`;
+    it.t.el.style.zIndex = it.t === G.lock ? 999 : Math.round(threat(it.t) * 100);
+  }
+}
+
+/* ---------- input ---------- */
+const SENT = "..";
+typer.value = SENT;
+function processTyper(e) {
+  if (e && e.isComposing) return;
+  const v = typer.value;
+  if (v.length < SENT.length || !v.startsWith(SENT)) { if (document.body.classList.contains("playing")) releaseLock(); }
+  else for (const ch of v.slice(SENT.length)) handleChar(ch);
+  typer.value = SENT;
+  try { typer.setSelectionRange(SENT.length, SENT.length); } catch (err) {}
+}
+typer.addEventListener("input", processTyper);
+typer.addEventListener("compositionend", () => setTimeout(processTyper, 0));
+typer.addEventListener("blur", () => { if (document.body.classList.contains("playing")) document.body.classList.add("nofocus"); });
+typer.addEventListener("focus", () => document.body.classList.remove("nofocus"));
+function focusTyper() { typer.value = SENT; typer.focus({ preventScroll: true }); try { typer.setSelectionRange(SENT.length, SENT.length); } catch (e) {} }
+$("#focus-hint").addEventListener("click", focusTyper);
+document.addEventListener("pointerdown", (e) => {
+  if (document.body.classList.contains("playing") && !G.paused && !e.target.closest("button")) setTimeout(focusTyper, 0);
+});
+document.addEventListener("keydown", (e) => {
+  if (!document.body.classList.contains("playing")) return;
+  if (e.key === "Escape") { e.preventDefault(); G.paused ? resume() : pause(); }
+  else if (e.key === "Tab") e.preventDefault();
+});
+$$(".item-btn[data-item]").forEach(b => b.addEventListener("click", (e) => {
+  e.preventDefault();
+  if (b.dataset.item === "buster") fireBuster(); else useItem(b.dataset.item);
+  focusTyper();
+}));
+$("#btn-pause").onclick = () => pause();
+$("#btn-resume").onclick = () => resume();
+$("#btn-end").onclick = () => { $("#scr-pause").classList.remove("show"); G.paused = false; endGame(false); };
+document.addEventListener("visibilitychange", () => { if (document.hidden && document.body.classList.contains("playing") && !G.over) pause(); });
+
+function pause() {
+  if (G.over) return;
+  G.paused = true;
+  $("#scr-pause").classList.add("show");
+  typer.blur();
+}
+function resume() {
+  G.paused = false;
+  $("#scr-pause").classList.remove("show");
+  focusTyper();
+}
+
+/* ---------- end of game / results ---------- */
+function endGame(destroyed) {
+  if (G.over) return;
+  G.over = true;
+  if (destroyed && G.player) explode(G.player.position.clone().add(new V3(0, 2, 0)), 0xff6633, 120, 0.6, 12);
+  const wpm = Math.round(currentWpm() * 10) / 10;
+  const accuracy = G.keystrokes ? Math.round(G.correct / G.keystrokes * 1000) / 10 : 0;
+  const mistyped = Object.entries(G.mistakes).sort((a, b) => b[1] - a[1]).map(([word, count]) => ({ word, count }));
+  const result = {
+    difficulty: G.diffName, wordBank: WORD_BANKS[G.bank].name, wpm, accuracy, survival: Math.round(G.time),
+    score: G.score, stage: G.stage, kills: G.kills, bosses: G.bosses, coins: G.coins, mistyped, mech: G.mech.id,
+  };
+  setTimeout(() => showResult(result, destroyed), destroyed ? 1400 : 100);
+}
+
+function showResult(r, destroyed) {
+  document.body.classList.remove("playing", "frozen", "nofocus");
+  typer.blur();
+  clearTargets();
+  if (G.player) { scene.remove(G.player); G.player = null; }
+  if (G.shieldMesh) G.shieldMesh.visible = false;
+  $("#bossbar").classList.remove("show");
+  hideMsg();
+  showScreen("scr-result");
+  resize();
+  $("#res-title").textContent = destroyed ? "MECH DESTROYED — MISSION REPORT" : "MISSION REPORT";
+  const tiles = [
+    ["hero", r.wpm, "Typing speed (WPM)"], ["hero", r.accuracy + "%", "Accuracy"], ["", fmtTime(r.survival), "Time survived"],
+    ["", r.score, "Score"], ["", r.stage, "Stage reached"], ["", r.kills, "Enemies destroyed"], ["", "+" + r.coins + " 🪙", "Coins earned"],
+  ];
+  $("#res-stats").innerHTML = tiles.map(([c, v, l]) => `<div class="stat ${c}"><div class="v">${esc(v)}</div><div class="l">${esc(l)}</div></div>`).join("");
+  $("#res-mistakes").innerHTML = r.mistyped.length ? r.mistyped.map(m => `<span class="chip">${esc(m.word)}${m.count > 1 ? `<i>×${m.count}</i>` : ""}</span>`).join("") : '<span class="ok">None — perfect typing! 🎯</span>';
+
+  const up = $("#res-upload");
+  const tooShort = r.survival < 20 || G.keystrokes < 20;
+  if (!isSchool()) {
+    S.guest.coins += r.coins; saveWallet();
+    up.innerHTML = "Guest mode — results are not recorded. <b>Sign in with your school account</b> to save scores and join the leaderboard.";
+  } else if (tooShort) {
+    up.innerHTML = "This mission was too short to record (play at least 20 seconds). No coins were saved.";
+  } else {
+    up.innerHTML = "⏳ Saving your result to the class record…";
+    S.session.player.coins += r.coins; saveWallet(); // optimistic, server value replaces it
+    submitResult(r).then(state => {
+      if (state === "ok") up.innerHTML = '<span class="ok">✔ Saved to your class record.</span>';
+      else if (state === "expired") up.innerHTML = '<span class="err">Your sign-in expired, so this result could not be saved. Please sign out and sign in again.</span>';
+      else up.innerHTML = "⚠ Couldn't reach the school server. Your result is kept on this device and will be sent automatically next time.";
+      renderUserChip();
+    });
+  }
+  renderUserChip();
+}
+
+async function submitResult(r) {
+  const item = { token: S.session.token, result: r, at: Date.now() };
+  try {
+    const res = await api({ action: "submitScore", token: item.token, result: r }, "POST", 20000);
+    if (res.ok) { if (res.player && isSchool()) { S.session.player = res.player; saveWallet(); } return "ok"; }
+    if (res.error === "session_expired" || res.error === "no_profile") return "expired";
+    throw new Error(res.error);
+  } catch (e) {
+    const q = store.get("mst_pending", []); q.push(item); store.set("mst_pending", q.slice(-20));
+    return "queued";
+  }
+}
+
+let flushing = false;
+async function flushPending() {
+  if (flushing || !CFG.APPS_SCRIPT_URL) return;
+  const q = store.get("mst_pending", []);
+  if (!q.length) return;
+  flushing = true;
+  const keep = [];
+  for (const item of q) {
+    if (Date.now() - item.at > 12 * 3600 * 1000) continue; // token no longer valid
+    try {
+      const res = await api({ action: "submitScore", token: item.token, result: item.result }, "POST", 20000);
+      if (res.ok) { if (isSchool() && res.player && S.session.token === item.token) { S.session.player = res.player; saveWallet(); } }
+      else if (res.error !== "session_expired" && res.error !== "no_profile") keep.push(item);
+    } catch (e) { keep.push(item); }
+  }
+  store.set("mst_pending", keep);
+  flushing = false;
+  renderUserChip();
+}
+
+$("#btn-again").onclick = () => { typer.focus(); startGame(); };
+$("#btn-to-hangar").onclick = () => showHangar();
+
+/* =====================================================================
+ *  LEADERBOARD
+ * ===================================================================== */
+let lbData = null, lbDiff = "Normal";
+async function loadLeaderboard(force) {
+  const body = $("#lb-body");
+  if (!CFG.APPS_SCRIPT_URL) { body.innerHTML = '<p class="muted">The leaderboard is not set up yet.</p>'; return; }
+  if (!lbData || force) {
+    body.innerHTML = '<p class="muted">Loading…</p>';
+    try { lbData = await api({ action: "leaderboard" }, "GET", 15000); if (!lbData.ok) throw new Error(lbData.error); }
+    catch (e) { lbData = null; body.innerHTML = '<p class="err">Can\'t load the leaderboard right now. Please try again later.</p>'; return; }
+  }
+  $("#lb-note").textContent = `Only nicknames are shown. Ranked by typing speed (WPM); accuracy must be at least ${lbData.minAccuracy}%. The week starts on Monday.`;
+  renderLeaderboard();
+}
+function renderLeaderboard() {
+  $$("#lb-seg button").forEach(b => b.classList.toggle("active", b.dataset.d === lbDiff));
+  const board = (lbData.boards || {})[lbDiff] || { week: [], all: [] };
+  const table = (title, rows) => `<div class="card"><h3>${title}</h3>${rows.length ? `<table><thead><tr><th>#</th><th>Nickname</th><th class="num">WPM</th><th class="num">Accuracy</th><th class="num">Date</th></tr></thead><tbody>` +
+    rows.map((r, i) => `<tr><td class="rank r${i + 1}">${i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</td><td class="nick">${esc(r.nickname)}</td><td class="num"><b>${r.wpm}</b></td><td class="num">${r.acc}%</td><td class="num muted">${fmtDate(r.time)}</td></tr>`).join("") +
+    `</tbody></table>` : '<p class="muted">No scores yet — be the first!</p>'}</div>`;
+  $("#lb-body").innerHTML = table("THIS WEEK", board.week) + table("ALL TIME", board.all);
+}
+$$("#lb-seg button").forEach(b => b.onclick = () => { lbDiff = b.dataset.d; if (lbData) renderLeaderboard(); });
+$("#btn-lb-refresh").onclick = () => loadLeaderboard(true);
+
+/* =====================================================================
+ *  TEACHER DASHBOARD  (password is checked by Apps Script)
+ * ===================================================================== */
+let tData = null, tSort = { key: "cls", dir: 1 };
+function teacherInit() {
+  const pw = store.sget("mst_tpw", null);
+  if (tData) return renderTeacher();
+  $("#t-login").style.display = ""; $("#t-dash").style.display = "none";
+  if (pw) teacherLoad(pw);
+}
+$("#t-form").addEventListener("submit", (e) => { e.preventDefault(); teacherLoad($("#t-pass").value); });
+async function teacherLoad(pw) {
+  const msg = $("#t-msg");
+  if (!CFG.APPS_SCRIPT_URL) { msg.textContent = "Not set up yet: paste the Apps Script URL into config.js."; return; }
+  msg.className = "muted"; msg.textContent = "Checking…";
+  try {
+    const r = await api({ action: "teacher", password: pw }, "POST", 30000);
+    if (!r.ok) { msg.className = "err"; msg.textContent = r.error === "wrong_password" ? "Wrong password." : "Error: " + r.error; store.sset("mst_tpw", null); return; }
+    store.sset("mst_tpw", pw); msg.textContent = ""; $("#t-pass").value = "";
+    tData = r; renderTeacher();
+  } catch (e) { msg.className = "err"; msg.textContent = "Can't reach the server. Please try again."; }
+}
+$("#btn-t-refresh").onclick = () => { const pw = store.sget("mst_tpw", null); if (pw) { $("#btn-t-refresh").textContent = "LOADING…"; teacherLoad(pw).finally(() => $("#btn-t-refresh").textContent = "REFRESH"); } };
+$("#btn-t-logout").onclick = () => { store.sset("mst_tpw", null); tData = null; teacherInit(); };
+$("#t-class").onchange = () => renderTeacher();
+
+function renderTeacher() {
+  $("#t-login").style.display = "none"; $("#t-dash").style.display = "";
+  const d = tData, sel = $("#t-class"), prev = sel.value;
+  sel.innerHTML = '<option value="">All classes</option>' + d.classes.map(c => `<option value="${esc(c.cls)}">${esc(c.cls)}</option>`).join("");
+  sel.value = d.classes.some(c => c.cls === prev) ? prev : "";
+  const cls = sel.value;
+  const students = d.students.filter(s => !cls || s.cls === cls);
+  const games = students.reduce((a, s) => a + s.games, 0);
+  const played = d.classes.filter(c => c.games > 0);
+  const scope = cls ? d.classes.find(c => c.cls === cls) : null;
+  const avgWpm = scope ? scope.avgWpm : (played.length ? Math.round(played.reduce((a, c) => a + c.avgWpm * c.games, 0) / Math.max(1, played.reduce((a, c) => a + c.games, 0)) * 10) / 10 : 0);
+  $("#t-kpis").innerHTML = [
+    [games, "Games played"], [students.length, "Students"], [avgWpm, "Average WPM"],
+    [students.length ? Math.max(...students.map(s => s.bestWpm)) : 0, "Best WPM"],
+  ].map(([v, l]) => `<div class="stat"><div class="v">${esc(v)}</div><div class="l">${esc(l)}</div></div>`).join("");
+
+  const maxW = Math.max(1, ...d.classes.map(c => c.avgWpm));
+  $("#t-class-bars").innerHTML = d.classes.map(c => `<div class="bar-row" title="${esc(c.cls)}: ${c.avgWpm} WPM average over ${c.games} games">
+      <span class="name">${esc(c.cls)}</span><div class="track"><div class="fill" style="width:${(100 * c.avgWpm / maxW).toFixed(1)}%;${cls && c.cls !== cls ? "opacity:.35" : ""}"></div></div><span class="val">${c.games ? c.avgWpm + " WPM" : "—"}</span></div>`).join("");
+  $("#t-class-table").innerHTML = `<thead><tr><th>Class</th><th class="num">Students</th><th class="num">Games</th><th class="num">Avg WPM</th><th class="num">Avg best WPM</th><th class="num">Avg accuracy</th></tr></thead><tbody>` +
+    d.classes.map(c => `<tr><td>${esc(c.cls)}</td><td class="num">${c.students}</td><td class="num">${c.games}</td><td class="num">${c.avgWpm}</td><td class="num">${c.avgBestWpm}</td><td class="num">${c.games ? c.avgAcc + "%" : "—"}</td></tr>`).join("") + "</tbody>";
+
+  const mist = cls ? (scope ? scope.topMistakes : []) : d.allMistakes;
+  $("#t-mist-title").textContent = `TOP 20 MISTYPED WORDS — ${cls || "ALL CLASSES"}`;
+  const maxM = Math.max(1, ...mist.map(m => m.count));
+  $("#t-mistakes").innerHTML = mist.length ? mist.map(m => `<div class="bar-row" title="${esc(m.word)}: mistyped ${m.count} times"><span class="name">${esc(m.word)}</span><div class="track"><div class="fill" style="width:${(100 * m.count / maxM).toFixed(1)}%;background:#b08cff"></div></div><span class="val">${m.count}×</span></div>`).join("") : '<p class="muted">No data yet.</p>';
+
+  $("#t-stu-title").textContent = `STUDENTS — ${cls || "ALL CLASSES"} (best result & improvement)`;
+  const cols = [
+    ["cls", "Class"], ["seat", "Seat", 1], ["name", "Name"], ["nickname", "Nickname"], ["games", "Games", 1], ["bestWpm", "Best WPM", 1],
+    ["bestAcc", "Acc. (best)", 1], ["firstAvg", "First 3 avg", 1], ["recentAvg", "Latest 3 avg", 1], ["improvement", "Improvement", 1], ["avgAcc", "Avg acc.", 1], ["lastPlayed", "Last played", 1],
+  ];
+  const sorted = students.slice().sort((a, b) => {
+    const k = tSort.key;
+    let x = a[k], y = b[k];
+    if (k === "seat") { x = Number(x) || 0; y = Number(y) || 0; }
+    if (x == null) x = -Infinity; if (y == null) y = -Infinity;
+    const r = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y));
+    return (r || (Number(a.seat) - Number(b.seat)) || String(a.cls).localeCompare(String(b.cls))) * tSort.dir;
+  });
+  $("#t-students").innerHTML = `<thead><tr>${cols.map(([k, l, n]) => `<th class="sortable ${n ? "num" : ""}" data-k="${k}">${l}${tSort.key === k ? (tSort.dir > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr></thead><tbody>` +
+    (sorted.length ? sorted.map(s => `<tr><td>${esc(s.cls)}</td><td class="num">${esc(s.seat)}</td><td>${esc(s.name)}</td><td class="muted">${esc(s.nickname)}</td><td class="num">${s.games}</td>
+      <td class="num"><b>${s.bestWpm}</b> <span class="muted small">${esc((s.bestDifficulty || "")[0] || "")}</span></td><td class="num">${s.bestAcc}%</td><td class="num">${s.firstAvg}</td><td class="num">${s.recentAvg}</td>
+      <td class="num">${s.improvement == null ? '<span class="muted">—</span>' : s.improvement > 0 ? `<span class="up">▲ +${s.improvement}</span>` : s.improvement < 0 ? `<span class="down">▼ ${s.improvement}</span>` : "0"}</td>
+      <td class="num">${s.avgAcc}%</td><td class="num muted">${fmtDate(s.lastPlayed)}</td></tr>`).join("") : `<tr><td colspan="${cols.length}" class="muted">No games yet.</td></tr>`) + "</tbody>";
+  $$("#t-students th.sortable").forEach(th => th.onclick = () => {
+    const k = th.dataset.k;
+    tSort = { key: k, dir: tSort.key === k ? -tSort.dir : (["cls", "name", "nickname", "seat"].includes(k) ? 1 : -1) };
+    renderTeacher();
+  });
+}
+
+/* =====================================================================
+ *  MAIN LOOP
+ * ===================================================================== */
+let last = performance.now();
+const camTarget = new V3();
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!renderer || mode === "idle" || document.hidden) return;
+  const t = now / 1000;
+  // stars drift toward the camera in game mode
+  const speed = mode === "game" && !G.paused ? (G.freezeT > 0 ? 8 : 40) : 4;
+  const a = stars.geometry.attributes.position;
+  for (let i = 2; i < a.array.length; i += 3) { a.array[i] += speed * dt; if (a.array[i] > 25) a.array[i] -= 440; }
+  a.needsUpdate = true;
+  planet.rotation.y += dt * 0.01;
+
+  if (mode === "game") {
+    if (!G.paused && !G.over) update(dt);
+    updateEffects(G.paused ? 0 : dt);
+    // camera sits high behind the mech so enemies stay visible above its head
+    const portrait = camera.aspect < 0.8;
+    camera.position.set(0, portrait ? 7.6 : 6.3, portrait ? 17 : 12.5);
+    if (G.shake > 0) camera.position.add(new V3((Math.random() - 0.5) * G.shake, (Math.random() - 0.5) * G.shake, 0));
+    camTarget.set(0, portrait ? 5.2 : 4.4, -40);
+    camera.lookAt(camTarget);
+    positionTags();
+  } else {
+    updateEffects(dt);
+    const narrow = window.innerWidth <= 900;
+    camera.position.set(0, 2.3, narrow ? 12.5 : 7.2);
+    camTarget.set(0, narrow ? -1.6 : 1.9, 0);
+    camera.lookAt(camTarget);
+    if (previewMech) {
+      previewMech.rotation.y = Math.sin(t * 0.4) * 0.9 + 0.35;
+      previewMech.position.y = Math.sin(t * 1.5) * 0.08 + (narrow ? 0.9 : 0);
+      for (const th of previewMech.userData.thrusters) th.scale.y = 0.8 + Math.random() * 0.4;
+      if (previewMech.userData.wings) for (const w of previewMech.userData.wings) w.g.rotation.z = w.base + Math.sin(t * 1.5) * 0.08 * w.s;
+    }
+  }
+  renderer.render(scene, camera);
+}
+
+/* =====================================================================
+ *  BOOT
+ * ===================================================================== */
+applyQuality();
+setPreviewMech((wallet() && wallet().selected) || "starter");
+goPlayHome();
+requestAnimationFrame(frame);
+loadRemoteConfig().then(() => { if (S.currentScreen === "scr-login") showLogin(); });
+if (isSchool()) flushPending();
+window.addEventListener("online", flushPending);
+// test hook (used by automated tests only)
+window.__MST = { G, S, startGame, handleChar, endGame, onGoogleCredential, useItem, fireBuster };
+</script>
+</body>
+</html>
