@@ -8,7 +8,7 @@
 window.GAME_CONFIG = {
   // 把 Apps Script「部署 → 网页应用」给你的网址贴在两个引号中间
   // 例如 "https://script.google.com/macros/s/AKfycb.../exec"
-  APPS_SCRIPT_URL: "",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbyrmiNn0cHn5ptd_1pJL7eranTE30OHOa6iF7bCRiyMFpup-Xe49yH4E7ohVA8g2qiaOQ/exec",
 
   // 连不上 Google Sheet 时用的备用班级列表（平时以 Sheet 里的为准）
   FALLBACK_CLASSES: ["1A", "1B", "1C", "2A", "2B", "2C", "3A", "3B", "3C"],
