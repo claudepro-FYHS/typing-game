@@ -15,4 +15,7 @@ window.GAME_CONFIG = {
 
   // 学校邮箱域名
   SCHOOL_DOMAIN: "foonyew.edu.my",
+
+  // 多人连线用的配对服务器。留空（null）= 使用免费的 PeerJS 公共服务，不用改。
+  PEER_SERVER: null,
 };

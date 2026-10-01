@@ -5,21 +5,25 @@
  * 第一次使用：在上方函数选单选「setup」→ 按「Run / 运行」→ 授权。
  * 之后：部署 → 新部署 → 网页应用（执行身份：我；谁可以访问：任何人）。
  *
- * 老师平时只需要改 Google Sheet 里的「Settings」分页：
- *   Classes          班级列表（用逗号分隔）
- *   TeacherPassword  老师后台密码
- *   GoogleClientId   Google Cloud 的 Client ID
+ * 老师平时只需要改 Google Sheet 里的分页：
+ *   Settings   ：Classes 班级列表（用逗号分隔）、TeacherPassword 老师后台密码、GoogleClientId
+ *   Admins     ：管理员 email（金币无限、全部机体可用，成绩不上排行榜）
+ *   CoinGifts  ：送金币（对象可以是 email、班级例如 2B，或 ALL 全部人）
  */
 
 var SHEET_SCORES = 'Scores';
 var SHEET_PLAYERS = 'Players';
 var SHEET_SETTINGS = 'Settings';
 var SHEET_BANNED = 'BannedWords';
+var SHEET_ADMINS = 'Admins';
+var SHEET_GIFTS = 'CoinGifts';
 
 var SCORE_HEADERS = ['Time', 'Class', 'Seat No', 'Name', 'Nickname', 'Email', 'Difficulty', 'Word Bank',
-  'WPM', 'Accuracy (%)', 'Survival (s)', 'Score', 'Stage', 'Mistyped Words', 'Mech'];
+  'WPM', 'Accuracy (%)', 'Survival (s)', 'Score', 'Stage', 'Mistyped Words', 'Mech', 'Mode'];
 var PLAYER_HEADERS = ['Email', 'Class', 'Seat No', 'Name', 'Nickname', 'Coins', 'Owned Mechs',
-  'Selected Mech', 'Last Updated'];
+  'Selected Mech', 'Last Updated', 'Gifts Received (auto)'];
+var ADMIN_HEADERS = ['Email', 'Unlimited coins (YES / NO)', 'Note'];
+var GIFT_HEADERS = ['Who: email / class (e.g. 2B) / ALL', 'Coins', 'Note', 'Gift ID (auto — do not edit)'];
 
 var DEFAULT_SETTINGS = [
   ['Classes', '1A, 1B, 1C, 2A, 2B, 2C, 3A, 3B, 3C', '班级列表，用逗号分隔。例如：1A, 1B, 2A'],
@@ -30,7 +34,12 @@ var DEFAULT_SETTINGS = [
 ];
 
 // 机体价钱（要和网页 index.html 里的 MECHS 一致）
-var MECH_PRICES = { starter: 0, guardian: 300, striker: 300, phantom: 500, seraph: 1200 };
+var MECH_PRICES = {
+  starter: 0, redcomet: 300, aile: 300, aegis: 400, flag: 400, zenith: 600, sovereign: 600, bladeangel: 800,
+  liberty: 900, fate: 900, baron: 1000, monoceros: 1000, nu: 1100, twin: 1100, seraph: 1200,
+};
+var ADMIN_COINS = 999999;
+var STAFF_CLASS = 'STAFF';
 
 var TOKEN_HOURS = 12;
 var TZ = 'Asia/Kuala_Lumpur';
@@ -53,6 +62,10 @@ function setup() {
     if (existing.indexOf(row[0]) === -1) st.appendRow(row);
   });
   st.setColumnWidth(1, 200); st.setColumnWidth(2, 380); st.setColumnWidth(3, 380);
+  ensureHeaders_(ss.getSheetByName(SHEET_SCORES), SCORE_HEADERS);
+  ensureHeaders_(ss.getSheetByName(SHEET_PLAYERS), PLAYER_HEADERS);
+  ensureSheet_(ss, SHEET_ADMINS, ADMIN_HEADERS);
+  ensureSheet_(ss, SHEET_GIFTS, GIFT_HEADERS);
   var bw = ss.getSheetByName(SHEET_BANNED);
   if (!bw) {
     bw = ss.insertSheet(SHEET_BANNED);
@@ -72,6 +85,15 @@ function ensureSheet_(ss, name, headers) {
     sh.setFrozenRows(1);
   }
   return sh;
+}
+
+// 旧版的分页少了新栏位时，补上标题
+function ensureHeaders_(sh, headers) {
+  if (!sh) return;
+  var row = sh.getDataRange().getValues()[0] || [];
+  for (var i = 0; i < headers.length; i++) {
+    if (!row[i]) sh.getRange(1, i + 1, 1, 1).setValues([[headers[i]]]).setFontWeight('bold');
+  }
 }
 
 function getSecret_() {
@@ -119,6 +141,7 @@ function doPost(e) {
   try {
     switch (body.action) {
       case 'login': return json_(login_(body));
+      case 'me': return json_(withLock_(function () { return me_(body); }));
       case 'saveProfile': return json_(withLock_(function () { return saveProfile_(body); }));
       case 'submitScore': return json_(withLock_(function () { return submitScore_(body); }));
       case 'buyMech': return json_(withLock_(function () { return buyMech_(body); }));
@@ -163,8 +186,25 @@ function login_(body) {
   if (String(info.email_verified) !== 'true') return { ok: false, error: 'bad_token' };
   var email = String(info.email || '').toLowerCase();
   if (email.split('@')[1] !== s.domain) return { ok: false, error: 'not_school', email: email };
-  var player = findPlayer_(email);
-  return { ok: true, token: makeToken_(email), email: email, player: player ? player.data : null };
+  var result = withLock_(function () { return refreshPlayer_(email); });
+  result.token = makeToken_(email);
+  result.email = email;
+  return result;
+}
+
+// 读取玩家资料，顺便发放老师送的金币；回传给网页的玩家资料（管理员会显示无限金币）
+function refreshPlayer_(email) {
+  var admin = isAdmin_(email);
+  var found = findPlayer_(email);
+  if (!found) return { ok: true, player: null, admin: admin, gift: 0 };
+  var gift = applyGifts_(found);
+  return { ok: true, player: publicPlayer_(found.data, admin), admin: admin, gift: gift };
+}
+
+function me_(body) {
+  var email = checkToken_(body.token);
+  if (!email) return { ok: false, error: 'session_expired' };
+  return refreshPlayer_(email);
 }
 
 function makeToken_(email) {
@@ -199,7 +239,59 @@ function rowToPlayer_(r) {
     coins: Number(r[5]) || 0,
     owned: String(r[6] || 'starter').split(',').map(function (x) { return x.trim(); }).filter(String),
     selected: String(r[7] || 'starter'),
+    gifts: String(r[9] || '').split(',').map(function (x) { return x.trim(); }).filter(String),
   };
+}
+
+// 送去网页的版本：不含内部栏位；管理员金币无限、全部机体可用
+function publicPlayer_(p, admin) {
+  var out = { email: p.email, cls: p.cls, seat: p.seat, name: p.name, nickname: p.nickname,
+    coins: p.coins, owned: p.owned.slice(), selected: p.selected, admin: !!admin };
+  if (admin) { out.coins = ADMIN_COINS; out.owned = Object.keys(MECH_PRICES); }
+  if (out.owned.indexOf(out.selected) === -1) out.selected = 'starter';
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Admins & coin gifts                                                */
+/* ------------------------------------------------------------------ */
+
+function adminMap_() {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ADMINS);
+  var map = {};
+  if (!sh) return map;
+  sh.getDataRange().getValues().slice(1).forEach(function (r) {
+    var e = String(r[0] || '').trim().toLowerCase();
+    if (e && String(r[1] || 'YES').trim().toUpperCase() !== 'NO') map[e] = true;
+  });
+  return map;
+}
+
+function isAdmin_(email) { return !!adminMap_()[String(email).toLowerCase()]; }
+
+// 依照 CoinGifts 分页发金币。每一行只会发给同一个人一次（用 Gift ID 记录）。
+function applyGifts_(found) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_GIFTS);
+  if (!sh) return 0;
+  var values = sh.getDataRange().getValues();
+  var p = found.data, added = 0, changed = false;
+  for (var i = 1; i < values.length; i++) {
+    var who = String(values[i][0] || '').trim().toLowerCase();
+    var amount = Math.round(Number(values[i][1]) || 0);
+    if (!who || !amount) continue;
+    var id = String(values[i][3] || '').trim();
+    if (!id) {
+      id = 'G' + Date.now().toString(36) + i;
+      sh.getRange(i + 1, 4, 1, 1).setValues([[id]]);
+    }
+    var match = who === 'all' || who === p.email.toLowerCase() || who === String(p.cls).toLowerCase();
+    if (!match || p.gifts.indexOf(id) !== -1) continue;
+    p.gifts.push(id);
+    p.coins = Math.max(0, p.coins + amount);
+    added += amount; changed = true;
+  }
+  if (changed) writePlayer_(found.row, p);
+  return added;
 }
 
 function findPlayer_(email) {
@@ -213,7 +305,8 @@ function findPlayer_(email) {
 
 function writePlayer_(row, p) {
   var sh = playersSheet_();
-  var vals = [[p.email, p.cls, p.seat, p.name, p.nickname, p.coins, p.owned.join(','), p.selected, new Date()]];
+  var vals = [[p.email, p.cls, p.seat, p.name, p.nickname, p.coins, p.owned.join(','), p.selected, new Date(),
+    (p.gifts || []).join(',')]];
   if (row) sh.getRange(row, 1, 1, vals[0].length).setValues(vals);
   else sh.appendRow(vals[0]);
 }
@@ -226,7 +319,8 @@ function saveProfile_(body) {
   var seat = String(body.seat || '').trim();
   var name = String(body.name || '').trim().replace(/\s+/g, ' ');
   var nick = String(body.nickname || '').trim();
-  if (s.classList.indexOf(cls) === -1) return { ok: false, error: 'bad_class', message: 'Please choose your class.' };
+  var admin = isAdmin_(email);
+  if (s.classList.indexOf(cls) === -1 && !(admin && cls === STAFF_CLASS)) return { ok: false, error: 'bad_class', message: 'Please choose your class.' };
   if (!/^\d{1,2}$/.test(seat) || Number(seat) < 1) return { ok: false, error: 'bad_seat', message: 'Seat number must be 1–99.' };
   if (name.length < 1 || name.length > 40) return { ok: false, error: 'bad_name', message: 'Please enter your name (max 40 characters).' };
   var nickErr = checkNickname_(nick);
@@ -241,10 +335,11 @@ function saveProfile_(body) {
     }
   }
   var found = findPlayer_(email);
-  var p = found ? found.data : { email: email, coins: 0, owned: ['starter'], selected: 'starter' };
+  var p = found ? found.data : { email: email, coins: 0, owned: ['starter'], selected: 'starter', gifts: [] };
   p.cls = cls; p.seat = seat; p.name = name; p.nickname = nick;
   writePlayer_(found ? found.row : null, p);
-  return { ok: true, player: p };
+  var gift = applyGifts_(findPlayer_(email));
+  return { ok: true, player: publicPlayer_(findPlayer_(email).data, admin), admin: admin, gift: gift };
 }
 
 function buyMech_(body) {
@@ -254,14 +349,17 @@ function buyMech_(body) {
   if (!found) return { ok: false, error: 'no_profile' };
   var id = String(body.mech || '');
   if (!(id in MECH_PRICES)) return { ok: false, error: 'bad_mech' };
-  var p = found.data;
-  if (p.owned.indexOf(id) !== -1) return { ok: true, player: p };
-  if (p.coins < MECH_PRICES[id]) return { ok: false, error: 'not_enough_coins', player: p };
+  var p = found.data, admin = isAdmin_(email);
+  if (admin || p.owned.indexOf(id) !== -1) {
+    p.selected = id; writePlayer_(found.row, p);
+    return { ok: true, player: publicPlayer_(p, admin) };
+  }
+  if (p.coins < MECH_PRICES[id]) return { ok: false, error: 'not_enough_coins', player: publicPlayer_(p, admin) };
   p.coins -= MECH_PRICES[id];
   p.owned.push(id);
   p.selected = id;
   writePlayer_(found.row, p);
-  return { ok: true, player: p };
+  return { ok: true, player: publicPlayer_(p, admin) };
 }
 
 function selectMech_(body) {
@@ -270,10 +368,11 @@ function selectMech_(body) {
   var found = findPlayer_(email);
   if (!found) return { ok: false, error: 'no_profile' };
   var id = String(body.mech || '');
-  if (found.data.owned.indexOf(id) === -1) return { ok: false, error: 'not_owned', player: found.data };
+  var admin = isAdmin_(email);
+  if (!(id in MECH_PRICES) || (!admin && found.data.owned.indexOf(id) === -1)) return { ok: false, error: 'not_owned', player: publicPlayer_(found.data, admin) };
   found.data.selected = id;
   writePlayer_(found.row, found.data);
-  return { ok: true, player: found.data };
+  return { ok: true, player: publicPlayer_(found.data, admin) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -301,15 +400,17 @@ function submitScore_(body) {
   sh.appendRow([new Date(), p.cls, p.seat, p.name, p.nickname, email, diff,
     String(r.wordBank || '').slice(0, 40), Math.round(wpm * 10) / 10, Math.round(acc * 10) / 10, survival,
     Math.max(0, Math.round(Number(r.score) || 0)), Math.max(1, Math.round(Number(r.stage) || 1)),
-    mistakes, String(r.mech || '').slice(0, 20)]);
+    mistakes, String(r.mech || '').slice(0, 20), r.mode === 'Multi' ? 'Multi' : 'Solo']);
 
   // 金币：设上限，防止有人改网页乱加钱
   var maxCoins = (Number(r.kills) || 0) * 12 + (Number(r.bosses) || 0) * 250;
   var earned = clamp_(Math.round(Number(r.coins) || 0), 0, Math.min(maxCoins, 5000));
   p.coins += earned;
   writePlayer_(found.row, p);
+  var gift = applyGifts_(found);
   CacheService.getScriptCache().remove('leaderboard');
-  return { ok: true, player: p, coinsAdded: earned };
+  var admin = isAdmin_(email);
+  return { ok: true, player: publicPlayer_(p, admin), admin: admin, coinsAdded: earned, gift: gift };
 }
 
 function clamp_(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
@@ -328,6 +429,7 @@ function readScores_() {
       email: String(r[5]).toLowerCase(), difficulty: String(r[6]), wordBank: String(r[7]),
       wpm: Number(r[8]) || 0, acc: Number(r[9]) || 0, survival: Number(r[10]) || 0,
       score: Number(r[11]) || 0, stage: Number(r[12]) || 0, mistyped: String(r[13] || ''),
+      mode: String(r[15] || 'Solo'),
     });
   }
   return out;
@@ -358,7 +460,9 @@ function getLeaderboard_() {
   if (hit) return JSON.parse(hit);
   var s = getSettings_();
   var players = playerMap_();
-  var scores = readScores_().filter(function (r) { return r.acc >= s.minAcc; });
+  var admins = adminMap_();
+  // 排行榜只算单人模式、不算管理员
+  var scores = readScores_().filter(function (r) { return r.acc >= s.minAcc && r.mode !== 'Multi' && !admins[r.email]; });
   var weekStart = weekStartMs_();
   var out = { ok: true, minAccuracy: s.minAcc, weekStart: weekStart, boards: {} };
   ['Easy', 'Normal', 'Hard'].forEach(function (d) {
@@ -398,7 +502,8 @@ function teacher_(body) {
     return { ok: false, error: 'wrong_password' };
   }
   var players = playerMap_();
-  var scores = readScores_().sort(function (a, b) { return a.time - b.time; });
+  var admins = adminMap_();
+  var scores = readScores_().filter(function (r) { return !admins[r.email]; }).sort(function (a, b) { return a.time - b.time; });
 
   var byStudent = {};
   scores.forEach(function (r) { (byStudent[r.email] = byStudent[r.email] || []).push(r); });
