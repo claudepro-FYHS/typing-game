@@ -84,7 +84,7 @@ p { line-height: 1.5; }
 
 /* login */
 #scr-login .card { max-width: 460px; width: 100%; text-align: center; }
-.title-cn { font-size: 44px; font-weight: 900; color: var(--gold); letter-spacing: 6px; text-shadow: 0 0 18px rgba(255,204,51,.45); margin: 0; }
+.title-cn, .title-jp { font-size: 44px; font-weight: 900; color: var(--gold); letter-spacing: 6px; text-shadow: 0 0 18px rgba(255,204,51,.45); margin: 0; }
 .title-en { font-family: var(--head); font-size: 22px; letter-spacing: 4px; margin: 4px 0 18px; }
 #gsi-btn { display: flex; justify-content: center; min-height: 44px; margin: 10px 0; }
 .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin: 14px 0; }
@@ -208,6 +208,45 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .section { margin-bottom: 16px; }
 
+/* pilot / progression */
+.event-banner { display: none; margin: 0 0 12px; padding: 10px 14px; border-radius: 10px; font-size: 14px; line-height: 1.4;
+  background: linear-gradient(90deg, rgba(255,90,60,.25), rgba(255,204,51,.2)); border: 1px solid rgba(255,204,51,.6); }
+.event-banner.show { display: block; }
+.xpbar { height: 10px; background: rgba(80,180,255,.12); border-radius: 5px; overflow: hidden; margin: 6px 0 4px; }
+.xpbar i { display: block; height: 100%; background: linear-gradient(90deg, #19c3ff, #7dff8a); border-radius: 5px; }
+.lv { font-family: var(--head); color: var(--gold); }
+.badge-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.badge { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: rgba(8,14,32,.8); font-size: 13px; }
+.badge .bi { font-size: 22px; }
+.badge b { display: block; font-family: var(--head); font-size: 12px; letter-spacing: .5px; margin: 2px 0; }
+.badge.locked { opacity: .38; filter: grayscale(1); }
+.title-chip { font-size: 11px; color: var(--gold); border: 1px solid rgba(255,204,51,.5); border-radius: 999px; padding: 0 6px; margin-left: 6px; white-space: nowrap; font-weight: 600; }
+.swatch { display: inline-flex; gap: 2px; margin-right: 6px; vertical-align: middle; }
+.swatch i { display: block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(255,255,255,.25); }
+.modal { position: fixed; inset: 0; z-index: 60; background: rgba(3,6,16,.78); display: none; align-items: center; justify-content: center; padding: 16px; }
+.modal.show { display: flex; }
+.modal .card { max-width: 760px; width: 100%; max-height: calc(100vh - 32px); overflow-y: auto; }
+.share-img { width: 100%; max-width: 380px; display: block; margin: 0 auto 12px; border-radius: 12px; border: 1px solid var(--line); }
+.newbadge { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,204,51,.12); border: 1px solid var(--gold); border-radius: 10px; padding: 4px 10px; margin: 4px 6px 0 0; font-size: 14px; }
+/* combo & effects */
+#combo-pop { position: absolute; top: 22%; left: 0; right: 0; text-align: center; font-family: var(--head); font-weight: 900; font-size: clamp(30px, 7vw, 64px);
+  letter-spacing: 4px; opacity: 0; pointer-events: none; }
+#combo-pop.go { animation: combopop 1.1s ease-out forwards; }
+@keyframes combopop { 0% { opacity: 0; transform: scale(2.4); } 15% { opacity: 1; transform: scale(1); } 70% { opacity: 1; } 100% { opacity: 0; transform: scale(1.1) translateY(-20px); } }
+#combo-veil { position: fixed; inset: 0; pointer-events: none; z-index: 3; opacity: 0; transition: opacity .4s; }
+#combo-veil.on { opacity: 1; animation: veilpulse 1.2s ease-in-out infinite; }
+@keyframes veilpulse { 50% { opacity: .55; } }
+.tag.elite { border-color: #ffd54a; color: #fff3c4; background: rgba(60,40,0,.85); box-shadow: 0 0 14px rgba(255,213,74,.6); }
+.floater.meaning { color: #fff; font-family: var(--body); font-weight: 700; font-size: 17px; animation-duration: 1.7s; background: rgba(4,8,22,.7); padding: 2px 8px; border-radius: 6px; }
+#slowmo-text { position: absolute; top: 16%; left: 0; right: 0; text-align: center; font-family: var(--head); font-size: clamp(22px, 5vw, 44px); font-weight: 900;
+  color: #fff2a8; letter-spacing: 8px; text-shadow: 0 0 20px #ffcc33; opacity: 0; transition: opacity .2s; pointer-events: none; }
+#slowmo-text.show { opacity: 1; }
+/* class battle */
+.cb-row { display: grid; grid-template-columns: 34px 70px 1fr 110px; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(80,180,255,.12); }
+.cb-row .track { height: 18px; background: rgba(80,180,255,.08); border-radius: 4px; overflow: hidden; }
+.cb-row .fill { height: 100%; background: #3ad0ff; border-radius: 0 4px 4px 0; }
+.cb-row .cls { font-family: var(--head); font-weight: 700; }
+
 /* multiplayer */
 .mp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .room-code { font-family: var(--head); font-size: 46px; letter-spacing: 10px; color: var(--gold); text-shadow: 0 0 18px rgba(255,204,51,.5); }
@@ -247,7 +286,7 @@ body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); bo
   #topbar nav button { flex: 1; padding: 6px 4px; font-size: 11px; }
   .screen { padding-top: 116px; }
   #scr-hangar { padding-top: 116px; }
-  .title-cn { font-size: 36px; }
+  .title-cn, .title-jp { font-size: 30px; letter-spacing: 3px; }
   .tag { font-size: 17px; padding: 1px 6px; }
   .tag.boss { font-size: 20px; }
   .hearts { font-size: 16px; }
@@ -263,6 +302,7 @@ body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); bo
 <canvas id="scene"></canvas>
 <div id="freeze-veil"></div>
 <div id="flash"></div>
+<div id="combo-veil"></div>
 <div id="labels"></div>
 <input id="typer" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Type here">
 
@@ -283,6 +323,7 @@ body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); bo
       <p class="title-cn">メカ・ストライク・タイパー</p>
       <p class="title-en">MECHA STRIKE TYPER</p>
       <p class="muted">Type the words to shoot down enemy mechs. Defeat the boss at the end of every stage!</p>
+      <div class="event-banner" id="login-event"></div>
       <div id="login-school">
         <h3>Foon Yew students</h3>
         <p class="small muted">Sign in with your <b>@foonyew.edu.my</b> account to save your scores, coins and mechs.</p>
@@ -329,11 +370,22 @@ body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); bo
 <section id="scr-hangar" class="screen">
   <div class="hangar-grid">
     <div class="card">
-      <h3>HANGAR — CHOOSE YOUR MECH</h3>
+      <div class="seg" id="shop-seg" style="margin-bottom:10px"><button data-tab="mechs" class="active">🤖 MECHS</button><button data-tab="paint">🎨 PAINT</button></div>
       <div class="mech-list" id="mech-list"></div>
+      <div class="mech-list" id="skin-list" style="display:none"></div>
       <p id="shop-msg" class="err"></p>
     </div>
     <div class="hangar-spacer"><div class="mech-title" id="mech-title"></div></div>
+    <div>
+    <div class="event-banner" id="hangar-event"></div>
+    <div class="card" id="pilot-card" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h3 style="margin:0">PILOT</h3><span class="lv" id="pilot-lv">LV 1</span></div>
+      <div class="xpbar"><i id="pilot-xpbar" style="width:0%"></i></div>
+      <div class="small muted" id="pilot-xptext"></div>
+      <div class="field" style="margin:10px 0 8px"><label for="title-select">Title (shown on the leaderboard)</label><select id="title-select"></select></div>
+      <div class="row small"><button class="btn ghost" id="btn-badges">🏅 BADGES</button></div>
+      <div class="small muted" id="pilot-unlocks" style="margin-top:8px"></div>
+    </div>
     <div class="card">
       <h3>MISSION SETUP</h3>
       <div class="field"><label>Difficulty</label>
@@ -342,6 +394,7 @@ body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); bo
         </div>
       </div>
       <div class="field"><label for="bank-select">Word bank</label><select id="bank-select"></select></div>
+      <div class="field"><label for="bg-select">Battlefield</label><select id="bg-select"></select></div>
       <button class="btn primary big" id="btn-launch" style="width:100%">SOLO MISSION ▶</button>
       <button class="btn gold" id="btn-multi" style="width:100%;margin-top:10px">👥 MULTIPLAYER (2–4)</button>
       <details>
@@ -360,7 +413,10 @@ body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); bo
         <button class="btn ghost" id="btn-edit-profile">EDIT PROFILE</button>
         <button class="btn ghost" id="btn-quality">GRAPHICS: HIGH</button>
         <button class="btn ghost" id="btn-sound">SOUND: ON</button>
+        <button class="btn ghost" id="btn-music">MUSIC: ON</button>
+        <button class="btn ghost" id="btn-meaning">中文: ON</button>
       </div>
+    </div>
     </div>
   </div>
 </section>
@@ -383,6 +439,8 @@ body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); bo
     </div>
   </div>
   <div id="hud-msg"></div>
+  <div id="combo-pop"></div>
+  <div id="slowmo-text">FINAL BLOW</div>
   <div class="hud-bottom">
     <button class="item-btn" data-item="bomb"><span class="k">1</span>💣<span class="n">0</span></button>
     <button class="item-btn" data-item="freeze"><span class="k">2</span>❄️<span class="n">0</span></button>
@@ -415,8 +473,10 @@ body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); bo
       <div class="stats" id="res-stats"></div>
       <h3>WORDS YOU MISTYPED</h3>
       <div class="chips" id="res-mistakes"></div>
+      <div id="res-progress" style="margin-top:14px"></div>
       <div class="upload" id="res-upload"></div>
       <div class="row" style="justify-content:flex-end">
+        <button class="btn ghost" id="btn-share" style="flex:0 0 auto">📸 SHARE CARD</button>
         <button class="btn ghost" id="btn-to-hangar" style="flex:0 0 auto">HANGAR</button>
         <button class="btn primary" id="btn-again" style="flex:0 0 auto">PLAY AGAIN ▶</button>
       </div>
@@ -466,7 +526,7 @@ body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); bo
     <div class="page-head">
       <h2>LEADERBOARD</h2>
       <div class="seg" id="lb-seg" style="min-width:260px">
-        <button data-d="Easy">EASY</button><button data-d="Normal" class="active">NORMAL</button><button data-d="Hard">HARD</button>
+        <button data-d="Easy">EASY</button><button data-d="Normal" class="active">NORMAL</button><button data-d="Hard">HARD</button><button data-d="Classes">⚔️ CLASS BATTLE</button>
       </div>
       <div class="spacer"></div>
       <button class="btn ghost" id="btn-lb-refresh">REFRESH</button>
@@ -510,12 +570,16 @@ body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); bo
   </div>
 </section>
 
+<div class="modal" id="modal"><div class="card"><div id="modal-body"></div><div class="row" style="justify-content:flex-end;margin-top:12px" id="modal-actions"><button class="btn ghost" id="btn-modal-close" style="flex:0 0 auto">CLOSE</button></div></div></div>
+
 <script src="config.js"></script>
 <script src="words.js"></script>
+<script src="meanings.js"></script>
 <script src="lib/three.min.js"></script>
 <script src="models.js"></script>
 <script src="lib/peerjs.min.js"></script>
 <script src="js/core.js"></script>
+<script src="js/progress.js"></script>
 <script src="js/scene.js"></script>
 <script src="js/game.js"></script>
 <script src="js/net.js"></script>

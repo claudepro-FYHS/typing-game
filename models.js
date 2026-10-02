@@ -334,10 +334,12 @@ const PACKS = {
 };
 
 /* ---------------- the mech itself ---------------- */
-function buildMech(def) {
-  const c = def.colors, b = def.bulk || 1;
+function buildMech(def, skin) {
+  const c = skin && skin.colors ? Object.assign({}, def.colors, skin.colors) : def.colors, b = def.bulk || 1;
+  const ex = (skin && skin.mat) || {};
   const M = {
-    main: MS(c.main), accent: MS(c.accent), trim: MS(c.trim), dark: MS(c.dark), metal: MS(0x9aa3b5),
+    main: MS(c.main, ex), accent: MS(c.accent, Object.assign({}, ex, skin && skin.accentGlow ? { emissive: c.accent, emissiveIntensity: 0.9 } : {})),
+    trim: MS(c.trim, Object.assign({}, ex, skin && skin.accentGlow ? { emissive: c.trim, emissiveIntensity: 0.7 } : {})), dark: MS(c.dark, ex), metal: MS(0x9aa3b5, ex),
     fin: MS(c.fin, { metalness: 0.3, roughness: 0.4, emissive: c.fin, emissiveIntensity: 0.25 }),
     visor: MB(c.visor), glow: GLOW(c.glow || 0x7fd8ff, 0.85), glowColor: c.glow,
   };
@@ -744,6 +746,41 @@ const BOSSES = [
     for (const s of [-1, 1]) { const ant = jnt("spin", g, 2.6 * s, 1.6, -1.2); rot(box(0.25, 3.2, 0.25, dark, 0, 1.4, 0, ant), 0, 0, -s * 0.6); P.spinners.push({ o: ant, axis: "z", amp: 0.12 * s, speed: 1.2 }); }
     for (let i = 0; i < 3; i++) { const leg = jnt("arm", g, (i - 1) * 2.4, -2.0, -0.5); box(0.6, 2.4, 0.6, dark, 0, -1.0, 0, leg); P.arms.push({ o: leg, s: i - 1 || 1, walk: true }); }
     return g; } },
+  /* ---- festival event bosses (only appear during events) ---- */
+  { name: "JADE RABBIT MOON", kind: "Festival Boss", event: "midautumn", yaw: 0, build(P) {
+    const g = new T.Group(), moon = MS(0xf3e6b0, { emissive: 0xf3d77a, emissiveIntensity: 0.45, roughness: 0.9 }), white = MS(0xf7f7fb), pink = MS(0xff9ab8), red = MB(0xff3344);
+    sph(4.0, moon, 0, 0, 0, g, 22);
+    for (let i = 0; i < 7; i++) { const a = i * 2.1; sph(0.5 + (i % 3) * 0.25, MS(0xd9c98f), Math.cos(a) * 2.6, Math.sin(a * 1.7) * 2.2, 3.4 - (i % 2) * 0.4, g, 10).scale.z = 0.3; }
+    const head = jnt("spin", g, 0, 4.6, 0.6); P.spinners.push({ o: head, axis: "z", amp: 0.12, speed: 1.4 });
+    sph(1.2, white, 0, 0, 0, head, 14).scale.set(1.1, 0.95, 1);
+    for (const s of [-1, 1]) {
+      const ear = jnt("arm", head, 0.5 * s, 0.9, 0); box(0.45, 2.4, 0.3, white, 0, 1.2, 0, ear); box(0.25, 1.9, 0.32, pink, 0, 1.2, 0.02, ear);
+      P.arms.push({ o: ear, s, walk: true });
+      sph(0.18, red, 0.45 * s, 0.2, 1.05, head, 8);
+    }
+    const orbit = jnt("orbit", g, 0, 0, 0); P.orbit = orbit;
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * Math.PI * 2, l = jnt("lan", orbit, Math.cos(a) * 6.5, Math.sin(i * 1.3) * 1.5, Math.sin(a) * 6.5);
+      cyl(0.45, 0.45, 0.9, GLOW(i % 2 ? 0xff5533 : 0xffaa33, 0.9), 0, 0, 0, l, 10); cyl(0.5, 0.5, 0.12, MS(0xc9a227), 0, 0.5, 0, l, 10); cyl(0.5, 0.5, 0.12, MS(0xc9a227), 0, -0.5, 0, l, 10);
+    }
+    return g; } },
+  { name: "GOLDEN DRAGON", kind: "Festival Boss", event: "cny", yaw: 0, build(P) {
+    const g = new T.Group(), gold = MS(0xe0b03a, { metalness: 0.8, roughness: 0.3 }), red = MS(0xc2181f), white = MS(0xf4f4f4);
+    P.wave = [];
+    for (let i = 0; i < 14; i++) {
+      const seg = jnt("seg", g, (i - 7) * 1.2, 0, -i * 0.35);
+      sph(1.0 - i * 0.04, i % 2 ? gold : red, 0, 0, 0, seg, 12);
+      rot(cone(0.25, 0.8, gold, 0, 0.9 - i * 0.03, 0, seg, 6), 0, 0, 0);
+      P.wave.push({ o: seg, i });
+    }
+    const head = jnt("spin", g, -9.6, 0.4, 0.8); P.spinners.push({ o: head, axis: "y", amp: 0.25, speed: 1.2 });
+    box(2.0, 1.4, 2.4, red, 0, 0, 0, head); box(1.6, 0.5, 1.4, gold, 0, -0.6, 0.9, head);
+    for (const s of [-1, 1]) { rot(cone(0.18, 1.8, gold, 0.6 * s, 1.2, -0.4, head, 6), -0.6, 0, s * 0.3); sph(0.2, MB(0xffee55), 0.6 * s, 0.35, 1.2, head, 8); rot(cyl(0.05, 0.02, 2.2, white, 0.8 * s, -0.3, 1.6, head, 6), 1.2, 0, s * 0.6); }
+    P.cores.push(sph(0.5, GLOW(0xffcc33, 0.95), 0, -0.2, 1.5, head, 10));
+    return g; } },
+  { name: "CENTENNIAL TITAN", kind: "Festival Boss", event: "anniversary", yaw: 0, humanoid: true, build(P) {
+    return giantMech({ id: "titan", head: "vfin", finSize: 1.4, pack: "mantis", weapon: "magnum", bulk: 1.3, shoulder: "big",
+      colors: { main: 0xf4f1e6, accent: 0xd8a830, trim: 0x1f4fbf, fin: 0xf6c10e, visor: 0x7dffb0, dark: 0x3a3424 } }, P); } },
 ];
 const BOSS_SIZE = 18;
 function buildBoss(idx) {
@@ -779,6 +816,7 @@ function animateBoss(holder, dt, time, attack, target) {
   }
   for (const c of P.cores) c.scale.setScalar(1 + Math.sin(time * 6) * 0.12 + attack * 0.6);
   if (P.orbit) P.orbit.rotation[P.orbitAxis || "y"] += dt * 0.6;
+  if (P.wave) for (const w of P.wave) { w.o.position.y = Math.sin(time * 2.2 - w.i * 0.55) * 1.4; w.o.position.z = -w.i * 0.35 + Math.cos(time * 1.6 - w.i * 0.5) * 0.8; }
   if (P.mech) {
     if (target) aimMech(P.mech, P.anim, target);
     if (attack > 0.9 && P.anim.recoil < 0.2) fireMech(P.anim, true);
