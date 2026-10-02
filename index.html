@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>钢弹击字 Mecha Strike Typer</title>
+<meta name="description" content="A 3D mecha typing game for English vocabulary practice.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 6 L40 30 L32 26 L24 30Z' fill='%23f6c10e'/%3E%3Crect x='20' y='30' width='24' height='20' rx='3' fill='%231f4fbf'/%3E%3Crect x='26' y='36' width='12' height='4' fill='%2339f0ff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Exo+2:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #060914;
+  --panel: rgba(10, 16, 36, 0.88);
+  --panel-solid: #0c1330;
+  --line: rgba(80, 180, 255, 0.35);
+  --line-strong: #3ad0ff;
+  --text: #e8f1ff;
+  --muted: #93a4c8;
+  --accent: #3ad0ff;
+  --gold: #ffcc33;
+  --danger: #ff4d5e;
+  --good: #3ee07a;
+  --freeze: #8fe3ff;
+  --head: "Orbitron", "Segoe UI", system-ui, sans-serif;
+  --body: "Exo 2", "Segoe UI", system-ui, "Microsoft YaHei", sans-serif;
+  --mono: "Share Tech Mono", Consolas, "Courier New", monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--body); overflow: hidden; }
+body { -webkit-tap-highlight-color: transparent; }
+button, input, select { font-family: inherit; font-size: 16px; }
+a { color: var(--accent); }
+
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 0; }
+#labels { position: fixed; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; overflow: hidden; }
+#typer { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; font-size: 16px; border: 0; padding: 0; z-index: -1; }
+
+/* ---------- top bar ---------- */
+#topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 20; display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px; background: linear-gradient(180deg, rgba(4,8,20,.95), rgba(4,8,20,.6)); border-bottom: 1px solid var(--line); }
+#topbar .logo { font-family: var(--head); font-weight: 900; letter-spacing: 1px; font-size: 15px; white-space: nowrap; }
+#topbar .logo b { color: var(--gold); font-family: var(--body); margin-right: 6px; font-size: 17px; }
+#topbar nav { display: flex; gap: 4px; margin-left: 8px; }
+#topbar nav button { background: transparent; color: var(--muted); border: 1px solid transparent; padding: 6px 12px; border-radius: 6px;
+  font-family: var(--head); font-size: 12px; letter-spacing: 1px; cursor: pointer; }
+#topbar nav button.active { color: var(--text); border-color: var(--line-strong); background: rgba(58,208,255,.12); }
+#userchip { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); white-space: nowrap; }
+#userchip .coins { color: var(--gold); font-weight: 700; }
+#userchip button { background: none; border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
+body.playing #topbar { display: none; }
+
+/* ---------- screens ---------- */
+.screen { position: fixed; inset: 0; z-index: 10; display: none; padding: 64px 16px 16px; overflow-y: auto; }
+.screen.show { display: block; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; backdrop-filter: blur(6px); }
+.center-wrap { min-height: calc(100% - 20px); display: flex; align-items: center; justify-content: center; }
+h1, h2, h3 { font-family: var(--head); letter-spacing: 1px; margin: 0 0 12px; }
+h2 { font-size: 20px; }
+h3 { font-size: 15px; color: var(--accent); }
+p { line-height: 1.5; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: rgba(58,208,255,.12); color: var(--text);
+  border: 1px solid var(--line-strong); border-radius: 10px; padding: 11px 18px; cursor: pointer; font-family: var(--head);
+  font-size: 13px; letter-spacing: 1px; transition: background .15s, transform .1s; }
+.btn:hover { background: rgba(58,208,255,.25); }
+.btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.primary { background: linear-gradient(90deg, #1b6cff, #19c3ff); border-color: #7fe0ff; font-weight: 700; }
+.btn.gold { background: linear-gradient(90deg, #d99a00, #ffcc33); color: #1d1300; border-color: #ffe28a; font-weight: 700; }
+.btn.ghost { background: transparent; border-color: var(--line); }
+.btn.big { font-size: 18px; padding: 16px 28px; }
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.field label { font-size: 13px; color: var(--muted); letter-spacing: .5px; }
+.field input, .field select { background: #0a1128; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.field input:focus, .field select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; }
+.row > * { flex: 1 1 140px; }
+.note { border-left: 3px solid var(--gold); background: rgba(255,204,51,.08); padding: 10px 12px; border-radius: 0 8px 8px 0; font-size: 14px; line-height: 1.5; }
+.err { color: var(--danger); min-height: 20px; font-size: 14px; }
+.ok { color: var(--good); }
+
+/* login */
+#scr-login .card { max-width: 460px; width: 100%; text-align: center; }
+.title-cn { font-size: 44px; font-weight: 900; color: var(--gold); letter-spacing: 6px; text-shadow: 0 0 18px rgba(255,204,51,.45); margin: 0; }
+.title-en { font-family: var(--head); font-size: 22px; letter-spacing: 4px; margin: 4px 0 18px; }
+#gsi-btn { display: flex; justify-content: center; min-height: 44px; margin: 10px 0; }
+.divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin: 14px 0; }
+.divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+
+/* profile */
+#scr-profile .card { max-width: 520px; width: 100%; }
+
+/* hangar */
+#scr-hangar { padding-top: 60px; }
+.hangar-grid { display: grid; grid-template-columns: minmax(260px, 340px) 1fr minmax(260px, 340px); gap: 16px; min-height: calc(100% - 10px); align-items: start; }
+.hangar-spacer { min-height: 300px; }
+.mech-list { display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 190px); overflow-y: auto; padding-right: 4px; }
+.mech-card .from { font-size: 11px; color: var(--muted); letter-spacing: .5px; }
+.mech-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; background: rgba(8,14,32,.7); transition: border-color .15s, background .15s; }
+.mech-card:hover { border-color: var(--accent); }
+.mech-card.sel { border-color: var(--gold); background: rgba(255,204,51,.1); box-shadow: 0 0 0 1px var(--gold) inset; }
+.mech-card .top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.mech-card .name { font-family: var(--head); font-size: 13px; letter-spacing: 1px; }
+.mech-card .price { color: var(--gold); font-size: 13px; white-space: nowrap; }
+.mech-card .hp { color: var(--danger); font-size: 13px; letter-spacing: 1px; }
+.mech-card .desc { font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+.mech-card .minus { color: #ff9aa4; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { flex: 1; background: transparent; color: var(--muted); border: 0; padding: 10px 6px; cursor: pointer; font-family: var(--head); font-size: 12px; letter-spacing: 1px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.active { background: rgba(58,208,255,.2); color: var(--text); }
+details summary { cursor: pointer; color: var(--accent); font-size: 14px; margin: 8px 0; }
+details ul { padding-left: 18px; margin: 6px 0; font-size: 14px; line-height: 1.6; color: var(--muted); }
+kbd { font-family: var(--mono); background: #1a2448; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; color: var(--text); }
+.mech-title { text-align: center; font-family: var(--head); font-size: 22px; letter-spacing: 3px; margin-top: 8px; text-shadow: 0 0 12px rgba(58,208,255,.6); }
+
+/* HUD */
+#hud { position: fixed; inset: 0; z-index: 5; pointer-events: none; display: none; }
+body.playing #hud { display: block; }
+.hud-top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 12px; gap: 10px; }
+.hud-box { background: rgba(5,10,26,.7); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font-family: var(--head); font-size: 12px; letter-spacing: 1px; }
+.hearts { font-size: 20px; color: var(--danger); letter-spacing: 2px; font-family: var(--body); }
+.hearts .empty { color: #3a3f55; }
+.hearts .shield { color: var(--freeze); }
+.hud-stats { display: grid; grid-template-columns: auto auto; gap: 2px 10px; text-align: right; }
+.hud-stats span:nth-child(odd) { color: var(--muted); text-align: left; }
+.hud-center { flex: 1; max-width: 520px; text-align: center; }
+.bossbar { display: none; margin-top: 6px; }
+.bossbar.show { display: block; }
+.bossbar .track { height: 12px; background: #2a0d16; border: 1px solid #ff4d5e; border-radius: 6px; overflow: hidden; }
+.bossbar .fill { height: 100%; background: linear-gradient(90deg, #ff2d55, #ff9a3c); width: 100%; transition: width .25s; }
+.bossbar .lbl { font-size: 11px; color: #ffb3bb; margin-bottom: 3px; }
+.hud-bottom { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; gap: 10px; padding: 10px; pointer-events: auto; flex-wrap: wrap; }
+.item-btn { pointer-events: auto; background: rgba(5,10,26,.8); border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 6px 12px;
+  min-width: 70px; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+.item-btn .k { font-family: var(--mono); color: var(--muted); font-size: 12px; }
+.item-btn .n { font-family: var(--head); font-weight: 700; }
+.item-btn.empty { opacity: .35; }
+.item-btn.ready { border-color: var(--gold); box-shadow: 0 0 14px rgba(255,204,51,.5); }
+#btn-pause { pointer-events: auto; background: rgba(5,10,26,.8); border: 1px solid var(--line); color: var(--text); border-radius: 10px; width: 40px; height: 40px; cursor: pointer; font-size: 16px; }
+#hud-msg { position: absolute; top: 34%; left: 0; right: 0; text-align: center; font-family: var(--head); font-weight: 900; font-size: clamp(26px, 6vw, 54px);
+  letter-spacing: 4px; text-shadow: 0 0 20px rgba(58,208,255,.8); opacity: 0; transition: opacity .3s; }
+#hud-msg.show { opacity: 1; }
+#hud-msg.warn { color: var(--danger); text-shadow: 0 0 22px rgba(255,77,94,.9); animation: blink .5s steps(2) infinite; }
+#hud-msg small { display: block; font-size: 40%; letter-spacing: 2px; color: var(--muted); margin-top: 6px; }
+@keyframes blink { 50% { opacity: .35; } }
+#flash { position: fixed; inset: 0; pointer-events: none; z-index: 4; background: radial-gradient(circle, transparent 40%, rgba(255,40,60,.55)); opacity: 0; transition: opacity .35s; }
+#flash.on { opacity: 1; transition: none; }
+body.frozen #labels .tag { border-color: var(--freeze); color: var(--freeze); }
+#freeze-veil { position: fixed; inset: 0; pointer-events: none; z-index: 3; background: rgba(120,210,255,.12); display: none; box-shadow: inset 0 0 120px rgba(143,227,255,.5); }
+body.frozen #freeze-veil { display: block; }
+#focus-hint { position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); z-index: 6; display: none; pointer-events: auto; }
+body.playing.nofocus #focus-hint { display: inline-flex; }
+
+/* word tags */
+.tag { position: absolute; left: 0; top: 0; transform-origin: 50% 100%; white-space: nowrap; font-family: var(--mono); font-size: 20px;
+  padding: 2px 8px; border-radius: 6px; background: rgba(4,8,22,.78); border: 1px solid rgba(160,190,255,.35); color: #fff; letter-spacing: 1px; will-change: transform; }
+.tag .done { color: var(--gold); }
+.tag.locked { border-color: var(--gold); box-shadow: 0 0 12px rgba(255,204,51,.6); background: rgba(40,28,0,.85); }
+.tag.missile { border-color: #ff6b7a; color: #ffd0d5; font-size: 18px; }
+.tag.boss { font-size: 24px; border-color: #ff4d5e; background: rgba(40,0,10,.85); }
+.tag.shake { animation: shake .25s; }
+@keyframes shake { 20%, 60% { margin-left: -5px; } 40%, 80% { margin-left: 5px; } }
+.floater { position: absolute; font-family: var(--head); font-weight: 700; font-size: 15px; color: var(--gold); pointer-events: none; animation: floatup 1s ease-out forwards; text-shadow: 0 0 8px #000; }
+@keyframes floatup { to { transform: translate(-50%, -60px); opacity: 0; } }
+
+/* pause & result */
+#scr-pause { background: rgba(3,6,16,.6); z-index: 30; }
+#scr-pause .card { max-width: 380px; width: 100%; text-align: center; }
+#scr-result .card { max-width: 720px; width: 100%; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 14px 0; }
+.stat { background: rgba(8,14,32,.8); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.stat .v { font-family: var(--head); font-size: 26px; font-weight: 700; }
+.stat .l { font-size: 12px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+.stat.hero .v { color: var(--gold); font-size: 34px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-family: var(--mono); background: #1a1030; border: 1px solid #5b3a8a; border-radius: 999px; padding: 3px 10px; font-size: 14px; }
+.chip i { font-style: normal; color: var(--muted); margin-left: 4px; }
+.upload { margin: 14px 0; padding: 10px 12px; border-radius: 8px; background: rgba(8,14,32,.8); border: 1px solid var(--line); font-size: 14px; }
+
+/* leaderboard & teacher */
+.page { max-width: 1100px; margin: 0 auto; }
+.page-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.page-head h2 { margin: 0; }
+.page-head .spacer { flex: 1; }
+.lb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { padding: 8px 8px; text-align: left; border-bottom: 1px solid rgba(80,180,255,.15); }
+th { color: var(--muted); font-weight: 600; font-size: 12px; letter-spacing: .5px; text-transform: uppercase; white-space: nowrap; }
+th.sortable { cursor: pointer; }
+th.sortable:hover { color: var(--text); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rank { font-family: var(--head); width: 36px; }
+.rank.r1 { color: #ffd54a; } .rank.r2 { color: #d6dde8; } .rank.r3 { color: #e0955a; }
+.nick { font-weight: 700; }
+.table-wrap { overflow-x: auto; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.bars { display: flex; flex-direction: column; gap: 6px; }
+.bar-row { display: grid; grid-template-columns: 70px 1fr 90px; align-items: center; gap: 10px; font-size: 14px; }
+.bar-row .track { height: 16px; background: rgba(80,180,255,.08); border-radius: 4px; overflow: hidden; }
+.bar-row .fill { height: 100%; background: #3ad0ff; border-radius: 0 4px 4px 0; }
+.bar-row .val { text-align: right; font-variant-numeric: tabular-nums; }
+.bar-row .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); }
+.up { color: var(--good); } .down { color: var(--danger); }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.section { margin-bottom: 16px; }
+
+/* multiplayer */
+.mp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.room-code { font-family: var(--head); font-size: 46px; letter-spacing: 10px; color: var(--gold); text-shadow: 0 0 18px rgba(255,204,51,.5); }
+.plist { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.prow { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(8,14,32,.7); }
+.prow .dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; }
+.prow .who { flex: 1; }
+.code-input { font-family: var(--head); font-size: 26px; letter-spacing: 8px; text-transform: uppercase; text-align: center; }
+#mp-board { display: none; margin-top: 6px; gap: 6px; justify-content: center; flex-wrap: wrap; }
+body.multi #mp-board { display: flex; }
+.mpb { background: rgba(5,10,26,.75); border: 1px solid var(--line); border-radius: 8px; padding: 3px 8px; font-size: 12px; font-family: var(--head); white-space: nowrap; }
+.mpb.dead { opacity: .4; text-decoration: line-through; }
+.mpb.me { border-color: var(--gold); }
+.ptag { position: absolute; left: 0; top: 0; transform-origin: 50% 100%; font-family: var(--head); font-size: 12px; padding: 1px 7px; border-radius: 6px;
+  background: rgba(4,8,22,.8); border: 1px solid; white-space: nowrap; pointer-events: none; }
+.tag .ob { display: flex; gap: 2px; margin-top: 2px; }
+.tag .ob i { display: block; height: 4px; border-radius: 2px; }
+.tag.mine { box-shadow: 0 0 0 1px var(--danger) inset; }
+.tag.pending { opacity: .45; }
+.tag.iced { border-color: var(--freeze); color: var(--freeze); }
+.toast { position: fixed; left: 50%; top: 70px; transform: translateX(-50%); z-index: 50; background: rgba(10,16,36,.95); border: 1px solid var(--gold);
+  color: var(--text); padding: 10px 18px; border-radius: 10px; font-size: 15px; box-shadow: 0 6px 24px rgba(0,0,0,.5); animation: toastin .3s; }
+@keyframes toastin { from { opacity: 0; transform: translate(-50%, -10px); } }
+.rank-table td, .rank-table th { padding: 6px 8px; }
+body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); box-shadow: inset 0 0 120px rgba(110,255,180,.35); }
+
+@media (max-width: 900px) {
+  .mp-grid { grid-template-columns: 1fr; }
+  .hangar-grid { grid-template-columns: 1fr; }
+  .hangar-spacer { min-height: 34vh; order: -1; }
+  .two-col { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  #topbar { padding: 6px 8px; gap: 6px; flex-wrap: wrap; }
+  #topbar .logo { font-size: 12px; }
+  #topbar nav { margin-left: 0; order: 3; width: 100%; }
+  #topbar nav button { flex: 1; padding: 6px 4px; font-size: 11px; }
+  .screen { padding-top: 116px; }
+  #scr-hangar { padding-top: 116px; }
+  .title-cn { font-size: 36px; }
+  .tag { font-size: 17px; padding: 1px 6px; }
+  .tag.boss { font-size: 20px; }
+  .hearts { font-size: 16px; }
+  .hud-box { font-size: 10px; padding: 4px 7px; }
+  .item-btn { min-width: 0; padding: 5px 9px; }
+  .bar-row { grid-template-columns: 60px 1fr 70px; }
+  .room-code { font-size: 34px; letter-spacing: 6px; }
+  .mech-list { max-height: none; }
+}
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="freeze-veil"></div>
+<div id="flash"></div>
+<div id="labels"></div>
+<input id="typer" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Type here">
+
+<header id="topbar">
+  <div class="logo"><b>钢弹击字</b>MECHA STRIKE TYPER</div>
+  <nav>
+    <button data-view="play" class="active">PLAY</button>
+    <button data-view="leaderboard">LEADERBOARD</button>
+    <button data-view="teacher">TEACHER</button>
+  </nav>
+  <div id="userchip"></div>
+</header>
+
+<!-- ================= LOGIN ================= -->
+<section id="scr-login" class="screen">
+  <div class="center-wrap">
+    <div class="card">
+      <p class="title-cn">钢弹击字</p>
+      <p class="title-en">MECHA STRIKE TYPER</p>
+      <p class="muted">Type the words to shoot down enemy mechs. Defeat the boss at the end of every stage!</p>
+      <div id="login-school">
+        <h3>Foon Yew students</h3>
+        <p class="small muted">Sign in with your <b>@foonyew.edu.my</b> account to save your scores, coins and mechs.</p>
+        <div id="gsi-btn"></div>
+        <div id="login-msg" class="err"></div>
+      </div>
+      <div class="divider">or</div>
+      <button class="btn ghost" id="btn-guest">PLAY AS GUEST</button>
+      <p class="small muted">Guests can play everything, but scores are not recorded and coins stay on this device only.</p>
+      <div id="setup-warn" class="note small" style="display:none;text-align:left"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PROFILE ================= -->
+<section id="scr-profile" class="screen">
+  <div class="center-wrap">
+    <form class="card" id="profile-form" autocomplete="off">
+      <h2>PILOT REGISTRATION</h2>
+      <p class="small muted" id="profile-email"></p>
+      <div class="row">
+        <div class="field"><label for="pf-class">Class</label><select id="pf-class" required></select></div>
+        <div class="field"><label for="pf-seat">Seat No.</label><input id="pf-seat" type="number" min="1" max="99" inputmode="numeric" required></div>
+      </div>
+      <div class="field"><label for="pf-name">Full name</label><input id="pf-name" maxlength="40" required placeholder="e.g. Tan Wei Ming / 陈伟明"></div>
+      <div class="field"><label for="pf-nick">Nickname (shown on the leaderboard)</label><input id="pf-nick" maxlength="12" required placeholder="e.g. StarPilot7"></div>
+      <div class="note">
+        <b>Why do I need a nickname?</b><br>
+        The leaderboard can be seen by everyone, so it shows <b>only your nickname</b> — never your real name.
+        Your real name, class and seat number are sent only to your teacher.<br>
+        Rules: 2–12 letters, numbers or Chinese characters (no spaces). Rude or offensive words in <b>any language</b> are not allowed,
+        and your teacher can change a nickname at any time.
+      </div>
+      <p id="profile-msg" class="err"></p>
+      <div class="row" style="justify-content:flex-end">
+        <button type="button" class="btn ghost" id="btn-profile-cancel" style="flex:0 0 auto">CANCEL</button>
+        <button type="submit" class="btn primary" id="btn-profile-save" style="flex:0 0 auto">SAVE &amp; CONTINUE</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- ================= HANGAR ================= -->
+<section id="scr-hangar" class="screen">
+  <div class="hangar-grid">
+    <div class="card">
+      <h3>HANGAR — CHOOSE YOUR MECH</h3>
+      <div class="mech-list" id="mech-list"></div>
+      <p id="shop-msg" class="err"></p>
+    </div>
+    <div class="hangar-spacer"><div class="mech-title" id="mech-title"></div></div>
+    <div class="card">
+      <h3>MISSION SETUP</h3>
+      <div class="field"><label>Difficulty</label>
+        <div class="seg" id="diff-seg">
+          <button data-d="Easy">EASY</button><button data-d="Normal">NORMAL</button><button data-d="Hard">HARD</button>
+        </div>
+      </div>
+      <div class="field"><label for="bank-select">Word bank</label><select id="bank-select"></select></div>
+      <button class="btn primary big" id="btn-launch" style="width:100%">SOLO MISSION ▶</button>
+      <button class="btn gold" id="btn-multi" style="width:100%;margin-top:10px">👥 MULTIPLAYER (2–4)</button>
+      <details>
+        <summary>How to play</summary>
+        <ul>
+          <li>Type the word on an enemy to lock on and fire. Finish the word to destroy it.</li>
+          <li>Enemies that reach you cost 1 ♥. Lose all ♥ and the mission ends.</li>
+          <li><kbd>Backspace</kbd> releases your lock. <kbd>Esc</kbd> pauses.</li>
+          <li>Destroyed enemies may drop items: <kbd>1</kbd> 💣 clear screen, <kbd>2</kbd> ❄️ freeze 5 s, <kbd>3</kbd> 🛡️ shield.</li>
+          <li>Boss: type its word to damage it. Type the words on its missiles to shoot them down!</li>
+          <li>Many mechs have a special move: type words in a row to charge it, then press <kbd>Space</kbd>.</li>
+          <li>Multiplayer: anyone can shoot any enemy — whoever finishes the word first gets the points!</li>
+        </ul>
+      </details>
+      <div class="row small" style="margin-top:6px">
+        <button class="btn ghost" id="btn-edit-profile">EDIT PROFILE</button>
+        <button class="btn ghost" id="btn-quality">GRAPHICS: HIGH</button>
+        <button class="btn ghost" id="btn-sound">SOUND: ON</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HUD ================= -->
+<div id="hud">
+  <div class="hud-top">
+    <div class="hud-box"><div class="hearts" id="hud-hearts"></div><div id="hud-stage">STAGE 1</div></div>
+    <div class="hud-center">
+      <div class="bossbar" id="bossbar"><div class="lbl" id="boss-name">BOSS</div><div class="track"><div class="fill" id="boss-fill"></div></div></div>
+      <div id="mp-board"></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-start">
+      <div class="hud-box hud-stats">
+        <span>SCORE</span><span id="hud-score">0</span>
+        <span>WPM</span><span id="hud-wpm">0</span>
+        <span>COMBO</span><span id="hud-combo">0</span>
+      </div>
+      <button id="btn-pause" aria-label="Pause">❚❚</button>
+    </div>
+  </div>
+  <div id="hud-msg"></div>
+  <div class="hud-bottom">
+    <button class="item-btn" data-item="bomb"><span class="k">1</span>💣<span class="n">0</span></button>
+    <button class="item-btn" data-item="freeze"><span class="k">2</span>❄️<span class="n">0</span></button>
+    <button class="item-btn" data-item="shield"><span class="k">3</span>🛡️<span class="n">0</span></button>
+    <button class="item-btn" data-item="special" id="special-btn" style="display:none"><span class="k">SPACE</span>⚡<span class="n">0/5</span></button>
+  </div>
+</div>
+<button class="btn gold" id="focus-hint">TAP HERE TO KEEP TYPING</button>
+
+<!-- ================= PAUSE ================= -->
+<section id="scr-pause" class="screen">
+  <div class="center-wrap">
+    <div class="card">
+      <h2 id="pause-title">PAUSED</h2>
+      <p class="small muted" id="pause-note" style="display:none">The match keeps going while this menu is open!</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn primary" id="btn-resume">RESUME</button>
+        <button class="btn ghost" id="btn-end">END MISSION</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= RESULT ================= -->
+<section id="scr-result" class="screen">
+  <div class="center-wrap">
+    <div class="card">
+      <h2 id="res-title">MISSION COMPLETE</h2>
+      <div id="res-ranking"></div>
+      <div class="stats" id="res-stats"></div>
+      <h3>WORDS YOU MISTYPED</h3>
+      <div class="chips" id="res-mistakes"></div>
+      <div class="upload" id="res-upload"></div>
+      <div class="row" style="justify-content:flex-end">
+        <button class="btn ghost" id="btn-to-hangar" style="flex:0 0 auto">HANGAR</button>
+        <button class="btn primary" id="btn-again" style="flex:0 0 auto">PLAY AGAIN ▶</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= MULTIPLAYER LOBBY ================= -->
+<section id="scr-multi" class="screen">
+  <div class="page">
+    <div class="page-head"><h2>MULTIPLAYER</h2><div class="spacer"></div><button class="btn ghost" id="btn-mp-back">◀ HANGAR</button></div>
+    <p class="muted small">2–4 pilots. Anyone can shoot any enemy — whoever finishes the word first gets the points. Enemies attack every pilot equally, so choose your targets wisely: protect yourself, or steal kills?</p>
+    <div id="mp-need-login" class="card" style="display:none"><p>Multiplayer needs your <b>school account</b>. Please sign in first.</p><button class="btn primary" id="btn-mp-signin">SIGN IN</button></div>
+    <div id="mp-choose" class="mp-grid">
+      <div class="card">
+        <h3>CREATE A ROOM</h3>
+        <p class="small muted" id="mp-host-settings"></p>
+        <div class="field"><label for="mp-stages">Match length</label>
+          <select id="mp-stages"><option value="3">3 stages</option><option value="5">5 stages</option><option value="0">Endless (until everyone is down)</option></select></div>
+        <button class="btn primary" id="btn-mp-create" style="width:100%">CREATE ROOM</button>
+      </div>
+      <div class="card">
+        <h3>JOIN A ROOM</h3>
+        <div class="field"><label for="mp-code">Room code</label><input id="mp-code" class="code-input" maxlength="5" autocomplete="off" autocapitalize="characters" placeholder="ABCDE"></div>
+        <button class="btn primary" id="btn-mp-join" style="width:100%">JOIN</button>
+      </div>
+    </div>
+    <div id="mp-room" class="card" style="display:none">
+      <div class="row" style="align-items:center">
+        <div style="flex:1 1 220px"><div class="muted small">ROOM CODE</div><div class="room-code" id="mp-room-code">-----</div></div>
+        <div style="flex:0 0 auto;display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost" id="btn-mp-copy">📋 COPY INVITE LINK</button></div>
+      </div>
+      <p class="small muted" id="mp-room-settings"></p>
+      <div class="plist" id="mp-players"></div>
+      <div class="row" style="justify-content:flex-end">
+        <button class="btn ghost" id="btn-mp-leave" style="flex:0 0 auto">LEAVE ROOM</button>
+        <button class="btn gold" id="btn-mp-start" style="flex:0 0 auto">START MATCH ▶</button>
+      </div>
+    </div>
+    <p class="err" id="mp-msg"></p>
+  </div>
+</section>
+
+<!-- ================= LEADERBOARD ================= -->
+<section id="scr-leaderboard" class="screen">
+  <div class="page">
+    <div class="page-head">
+      <h2>LEADERBOARD</h2>
+      <div class="seg" id="lb-seg" style="min-width:260px">
+        <button data-d="Easy">EASY</button><button data-d="Normal" class="active">NORMAL</button><button data-d="Hard">HARD</button>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="btn-lb-refresh">REFRESH</button>
+    </div>
+    <p class="small muted" id="lb-note">Only nicknames are shown. Ranked by typing speed (WPM).</p>
+    <div id="lb-body" class="lb-grid"></div>
+  </div>
+</section>
+
+<!-- ================= TEACHER ================= -->
+<section id="scr-teacher" class="screen">
+  <div class="page">
+    <div id="t-login" class="center-wrap">
+      <form class="card" id="t-form" style="max-width:380px;width:100%">
+        <h2>TEACHER DASHBOARD</h2>
+        <div class="field"><label for="t-pass">Password</label><input id="t-pass" type="password" autocomplete="current-password" required></div>
+        <p class="err" id="t-msg"></p>
+        <button class="btn primary" type="submit" style="width:100%">ENTER</button>
+      </form>
+    </div>
+    <div id="t-dash" style="display:none">
+      <div class="page-head">
+        <h2>TEACHER DASHBOARD</h2>
+        <div class="spacer"></div>
+        <select id="t-class" class="btn ghost" style="font-family:var(--body)"></select>
+        <button class="btn ghost" id="btn-t-refresh">REFRESH</button>
+        <button class="btn ghost" id="btn-t-logout">LOG OUT</button>
+      </div>
+      <div class="kpis" id="t-kpis"></div>
+      <div class="two-col">
+        <div class="card section"><h3>AVERAGE SPEED BY CLASS (WPM, all games)</h3><div class="bars" id="t-class-bars"></div>
+          <div class="table-wrap" style="margin-top:12px"><table id="t-class-table"></table></div></div>
+        <div class="card section"><h3 id="t-mist-title">TOP 20 MISTYPED WORDS</h3><div class="bars" id="t-mistakes"></div></div>
+      </div>
+      <div class="card section">
+        <h3 id="t-stu-title">STUDENTS</h3>
+        <p class="small muted">Improvement = average WPM of the latest 3 games − average WPM of the first 3 games. Click a column title to sort.</p>
+        <div class="table-wrap"><table id="t-students"></table></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script src="config.js"></script>
+<script src="words.js"></script>
+<script src="lib/three.min.js"></script>
+<script src="models.js"></script>
+<script src="lib/peerjs.min.js"></script>
+<script src="js/core.js"></script>
+<script src="js/scene.js"></script>
+<script src="js/game.js"></script>
+<script src="js/net.js"></script>
+<script src="js/pages.js"></script>
+</body>
+</html>
