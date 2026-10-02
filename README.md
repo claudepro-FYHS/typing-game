@@ -1,267 +1,269 @@
-# 钢弹击字 Mecha Strike Typer
+# Mecha Strike Typer
 
-一个 3D 机甲英文打字游戏。学生打出敌机上的英文单字就能开火击落敌机，每一关最后有 Boss（战舰或巨大 MA）。
-可以单人玩，也可以 2–4 人连线对战抢分。
+A 3D mecha English typing game. Students type the words on enemy mechs to fire and shoot them down. Every stage ends with a boss (a battleship or a giant mobile armor).
+Play solo, or team up with 2–4 classmates online and race each other for points.
 
-- **游戏网址：** https://claudepro-fyhs.github.io/typing-game/
-- **排行榜：** 游戏上方的 **LEADERBOARD**
-- **老师后台：** 游戏上方的 **TEACHER**（密码在 Google Sheet 里设定）
+- **Play:** https://claudepro-fyhs.github.io/typing-game/
+- **Leaderboard:** the **LEADERBOARD** tab at the top of the game
+- **Teacher dashboard:** the **TEACHER** tab at the top of the game (the password is set in the Google Sheet)
+
+> 中文说明请看 [README_cn.md](README_cn.md)。
 
 ---
 
-## 文件说明
+## Files
 
-| 文件 | 用途 | 老师需要改吗？ |
+| File | What it is | Does the teacher need to edit it? |
 |---|---|---|
-| `index.html` | 游戏网页（画面、排行榜、老师后台） | 不用 |
-| `config.js` | 贴 Apps Script 网址 | **第一次设置时贴一次** |
-| `words.js` | 词库（10 个词库，约 2600 个单字） | 想加单字时才改（见下面） |
-| `apps-script/Code.gs` | 贴进 Google Apps Script 的接收端程序 | 不用（照步骤复制贴上） |
-| `models.js` | 15 架机体、13 种敌机、15 个 Boss 的 3D 模型和动作 | 不用 |
-| `js/` | 游戏程序（单人、多人连线、排行榜、老师后台） | 不用 |
-| `lib/` | Three.js（3D 引擎）、PeerJS（多人连线），都是 MIT 授权 | 不用 |
+| `index.html` | The game page (screens, leaderboard, teacher dashboard) | No |
+| `config.js` | Where the Apps Script URL goes | **Once, during first-time setup** |
+| `words.js` | Word banks (10 banks, about 2,600 words) | Only to add words (see below) |
+| `apps-script/Code.gs` | The backend that you paste into Google Apps Script | No (just copy and paste it, following the steps) |
+| `models.js` | 3D models and animations: 15 mechs, 13 enemy types, 15 bosses | No |
+| `js/` | Game code (solo, multiplayer, leaderboard, teacher dashboard) | No |
+| `lib/` | Three.js (3D engine) and PeerJS (multiplayer), both MIT-licensed | No |
 
 ---
 
-## 第一次设置（照顺序做，约 30 分钟）
+## First-time setup (do these in order, about 30 minutes)
 
-### 步骤 A：Google Cloud Client ID（让学生可以用学校账号登入）
+### Step A: Google Cloud Client ID (lets students sign in with their school accounts)
 
-> 用**学校账号**登入来做。
+> Sign in with your **school account** to do this.
 
-1. 打开 https://console.cloud.google.com/，左上角按项目选择框，然后按 **NEW PROJECT**。
-   - 名字填 `mecha-typer`，按 **CREATE**，建好后 **SELECT PROJECT**。
-2. 在顶部搜索栏搜 **Google Auth Platform**，按 **Get started**：
-   - App name 填 `Mecha Strike Typer`
-   - Support email 选您的邮箱
-   - Audience 选 **Internal**
-   - Contact email 填您的邮箱
-   - 打勾同意后按 **Create**
-3. 左边选 **Clients**，按 **+ Create client**：
-   - Application type 选 **Web application**
-   - **Authorized JavaScript origins** 按 **+ Add URI**，填 `https://claudepro-fyhs.github.io`
-   - 按 **Create**
-4. 复制画面上的 **Client ID**（格式像 `xxxx.apps.googleusercontent.com`），步骤 B 会用到。
+1. Open https://console.cloud.google.com/, click the project picker at the top left, then click **NEW PROJECT**.
+   - Name it `mecha-typer`, click **CREATE**, and then **SELECT PROJECT** when it's ready.
+2. Search for **Google Auth Platform** in the top search bar and click **Get started**:
+   - App name: `Mecha Strike Typer`
+   - Support email: choose your email
+   - Audience: choose **Internal**
+   - Contact email: your email
+   - Tick the agreement box, then click **Create**
+3. In the left menu choose **Clients**, then click **+ Create client**:
+   - Application type: **Web application**
+   - Under **Authorized JavaScript origins**, click **+ Add URI** and enter `https://claudepro-fyhs.github.io`
+   - Click **Create**
+4. Copy the **Client ID** shown on screen (it looks like `xxxx.apps.googleusercontent.com`). You'll need it in Step B.
 
-### 步骤 B：建立 Google Sheet 和 Apps Script（收成绩的地方）
+### Step B: Create the Google Sheet and Apps Script (where scores are collected)
 
-1. 到 Google Drive，按 **新增 → Google 试算表**，命名为 `钢弹击字 成绩`。
-2. 在试算表上方选单按 **扩充功能（Extensions）→ Apps Script**。
-3. 在新开的 Apps Script 页面：
-   1. 把 `Code.gs` 里面原本的内容**全部删掉**。
-   2. 打开 https://github.com/claudepro-FYHS/typing-game/blob/main/apps-script/Code.gs，按右上角的 **Copy raw file** 图示（两个方块），这样就复制了全部内容。
-   3. 回到 Apps Script 页面，贴上。
-   4. 按 💾（Save）保存。
-4. 在上方工具列的函数选单（在「Debug」旁边）选 **setup**，然后按 **▶ Run**。
-5. 第一次运行会跳出授权窗口：
-   1. 按 **Review permissions**，然后选您的学校账号。
-   2. 如果看到「Google hasn't verified this app」，按 **Advanced**，再按 **Go to … (unsafe)**。这是您自己写的程序，所以没有问题。
-   3. 按 **Allow**。
-   4. 下方执行记录出现 `Setup done. 设置完成！` 就成功了。
-6. 回到试算表，会看到多了 **Scores、Players、Settings、BannedWords、Admins、CoinGifts** 六个分页。在 **Settings** 分页改 B 栏：
-   - **Classes**：您的班级，用逗号分隔，例如 `1A, 1B, 1C, 2A, 2B`
-   - **TeacherPassword**：老师后台密码。**一定要改掉**默认的 `change-me-2026`。
-   - **GoogleClientId**：贴上步骤 A 复制的 Client ID
-7. 发布成网页应用：回到 Apps Script 页面，按右上角 **部署（Deploy）→ 新增部署作业（New deployment）**。
-   1. 按「选取类型」旁边的 ⚙ 齿轮，选 **网页应用程式（Web app）**。
-   2. 说明：填 `v1`
-   3. 执行身分（Execute as）：选 **我（Me）**
-   4. 谁可以存取（Who has access）：选 **所有人（Anyone）**
-   5. 按 **部署（Deploy）**，复制 **网页应用程式网址**（结尾是 `/exec`）。
+1. In Google Drive, click **New → Google Sheets** and name the file `Mecha Strike Typer Scores`.
+2. In the spreadsheet menu, click **Extensions → Apps Script**.
+3. In the Apps Script page that opens:
+   1. **Delete everything** in `Code.gs`.
+   2. Open https://github.com/claudepro-FYHS/typing-game/blob/main/apps-script/Code.gs and click the **Copy raw file** icon (two squares) at the top right. This copies the whole file.
+   3. Go back to Apps Script and paste.
+   4. Click 💾 (Save).
+4. In the function menu on the toolbar (next to "Debug"), choose **setup**, then click **▶ Run**.
+5. The first run asks for permission:
+   1. Click **Review permissions** and choose your school account.
+   2. If you see "Google hasn't verified this app", click **Advanced**, then **Go to … (unsafe)**. This is your own script, so it is safe.
+   3. Click **Allow**.
+   4. When the execution log shows `Setup done. 设置完成！`, it worked.
+6. Back in the spreadsheet you'll see six new tabs: **Scores, Players, Settings, BannedWords, Admins, CoinGifts**. In the **Settings** tab, edit column B:
+   - **Classes**: your classes, separated by commas, e.g. `1A, 1B, 1C, 2A, 2B`
+   - **TeacherPassword**: the teacher dashboard password. **Be sure to change** the default `change-me-2026`.
+   - **GoogleClientId**: paste the Client ID from Step A
+7. Publish it as a web app: back in Apps Script, click **Deploy → New deployment** at the top right.
+   1. Click the ⚙ gear next to "Select type" and choose **Web app**.
+   2. Description: `v1`
+   3. Execute as: **Me**
+   4. Who has access: **Anyone**
+   5. Click **Deploy** and copy the **Web app URL** (it ends with `/exec`).
 
-> ❗ 如果「谁可以存取」没有 **所有人（Anyone）** 这个选项，只有「foonyew.edu.my 内的所有人」，那是学校管理员锁住了。
-> 选了「foonyew.edu.my 内的所有人」的话，游戏网页会连不上。请学校 IT 开放，或者告诉我改用别的方法。
+> ❗ If "Who has access" has no **Anyone** option, only "Anyone within foonyew.edu.my", the school administrator has locked it.
+> With "Anyone within foonyew.edu.my" the game page cannot connect. Ask the school IT team to allow it, or contact the maintainer for an alternative.
 
-### 步骤 C：把网址贴进 `config.js`
+### Step C: Paste the URL into `config.js`
 
-1. 打开 https://github.com/claudepro-FYHS/typing-game/blob/main/config.js
-2. 按右上角的 ✏️（Edit this file）。
-3. 把步骤 B-7 的网址贴在 `APPS_SCRIPT_URL: ""` 的**两个引号中间**，例如：
+1. Open https://github.com/claudepro-FYHS/typing-game/blob/main/config.js
+2. Click ✏️ (Edit this file) at the top right.
+3. Paste the URL from Step B-7 **between the two quotes** of `APPS_SCRIPT_URL: ""`, for example:
    ```js
    APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycb.../exec",
    ```
-4. 按右上角绿色的 **Commit changes…**，再按一次 **Commit changes**。
+4. Click the green **Commit changes…** button at the top right, then **Commit changes** again.
 
-### 步骤 D：开启 GitHub Pages（让网址可以打开）
+### Step D: Turn on GitHub Pages (makes the game URL work)
 
-1. 打开 https://github.com/claudepro-FYHS/typing-game/settings/pages
-2. **Source** 选 **Deploy from a branch**。
-3. **Branch** 选 **main**，资料夹选 **/ (root)**，按 **Save**。
-4. 等 1–3 分钟，打开 https://claudepro-fyhs.github.io/typing-game/ 就能玩了。
-   - 之后每次改 `config.js`，也要等 1–3 分钟才会更新。
+1. Open https://github.com/claudepro-FYHS/typing-game/settings/pages
+2. Under **Source**, choose **Deploy from a branch**.
+3. Under **Branch**, choose **main** and the **/ (root)** folder, then click **Save**.
+4. Wait 1–3 minutes, then open https://claudepro-fyhs.github.io/typing-game/ to play.
+   - Every later change (for example to `config.js`) also takes 1–3 minutes to appear.
 
-### 步骤 E：测试
+### Step E: Test it
 
-1. 打开游戏网址，按 **Sign in with Google**，用学校账号登入。
-2. 填好班级、座号、名字、花名。
-3. 玩一局，至少 20 秒。
-4. 结果画面出现 **✔ Saved to your class record**，Google Sheet 的 **Scores** 分页就会多一行成绩。
-5. 按上方 **TEACHER**，输入密码，确认老师后台看得到数据。
+1. Open the game, click **Sign in with Google**, and sign in with a school account.
+2. Fill in class, seat number, name and nickname.
+3. Play one game for at least 20 seconds.
+4. When the results screen shows **✔ Saved to your class record**, a new row appears in the **Scores** tab of the Google Sheet.
+5. Click **TEACHER** at the top, enter the password, and check that the dashboard shows the data.
 
 ---
 
-## 以后怎么改设定
+## Changing settings later
 
-全部都在 Google Sheet 里改，**不用碰 GitHub**。改完学生重新整理网页就生效。
+Everything is changed in the Google Sheet. **You don't need to touch GitHub.** Changes take effect when students refresh the page.
 
-| 想改什么 | 去哪里改 |
+| What to change | Where |
 |---|---|
-| 班级列表 | **Settings** 分页 → `Classes`，用逗号分隔 |
-| 老师后台密码 | **Settings** 分页 → `TeacherPassword` |
-| 排行榜最低准确率 | **Settings** 分页 → `LeaderboardMinAccuracy`（默认 80） |
-| 学生的不当花名 | **Players** 分页 → 直接改 `Nickname` 那一格 |
-| 加屏蔽词 | **BannedWords** 分页 → A 栏每行加一个字 |
-| 学生填错班级或名字 | **Players** 分页直接改。之后的新成绩会用新资料；已经记录的旧成绩要在 **Scores** 分页自己改 |
-| 删除测试成绩 | **Scores** 分页整行删掉 |
-| 设定管理员 | **Admins** 分页 → A 栏填 email，B 栏填 `YES`（见下面） |
-| 送金币给学生 | **CoinGifts** 分页（见下面） |
-| 直接改某个学生的金币 | **Players** 分页 → 改 `Coins` 那一格 |
+| Class list | **Settings** tab → `Classes`, comma-separated |
+| Teacher dashboard password | **Settings** tab → `TeacherPassword` |
+| Minimum accuracy for the leaderboard | **Settings** tab → `LeaderboardMinAccuracy` (default 80) |
+| A student's inappropriate nickname | **Players** tab → edit the `Nickname` cell directly |
+| Add a banned word | **BannedWords** tab → one word per row in column A |
+| A student entered the wrong class or name | Edit the **Players** tab directly. New scores use the new details; fix old scores yourself in the **Scores** tab |
+| Delete test scores | Delete the whole row in the **Scores** tab |
+| Set up admins | **Admins** tab → email in column A, `YES` in column B (see below) |
+| Give coins to students | **CoinGifts** tab (see below) |
+| Change one student's coins directly | **Players** tab → edit the `Coins` cell |
 
-### 管理员（Admins 分页）
+### Admins (Admins tab)
 
-- 在 A 栏填 email（例如您自己的 `xxx@foonyew.edu.my`），B 栏填 `YES`。
-- 管理员的金币显示为 **∞**，15 架机体全部可以直接使用。
-- 管理员的成绩会记录在 Scores 分页，但**不会出现在排行榜和老师后台**，不会影响学生的数据。
-- 管理员填资料时，班级可以选 **STAFF**。
-- 想取消管理员：把 B 栏改成 `NO`，或者删掉那一行。
+- Put an email in column A (for example your own `xxx@foonyew.edu.my`) and `YES` in column B.
+- Admins see their coins as **∞** and can use all 15 mechs right away.
+- Admin games are recorded in the Scores tab but **never appear on the leaderboard or the teacher dashboard**, so they don't affect student data.
+- When an admin fills in their profile, they can choose **STAFF** as their class.
+- To remove an admin, change column B to `NO` or delete the row.
 
-### 送金币（CoinGifts 分页）
+### Giving coins (CoinGifts tab)
 
-每一行是一份礼物：
+Each row is one gift:
 
-| A 栏：送给谁 | B 栏：金币数量 | C 栏：备注（随意） | D 栏：自动产生，不要改 |
+| Column A: who | Column B: coins | Column C: note (anything) | Column D: filled in automatically, don't edit |
 |---|---|---|---|
-| `amy@foonyew.edu.my` | 200 | 比赛冠军 | |
-| `2B` | 50 | 2B 全班奖励 | |
-| `ALL` | 100 | 学校假期礼物 | |
+| `amy@foonyew.edu.my` | 200 | Contest winner | |
+| `2B` | 50 | Reward for class 2B | |
+| `ALL` | 100 | School holiday gift | |
 
-- A 栏可以填一个学生的 email、一个班级（例如 `2B`），或 `ALL`（全部学生）。
-- 每份礼物，每个学生只会收到一次。学生下次打开游戏时会看到「🎁 Your teacher sent you … coins!」。
-- B 栏填负数可以扣金币（最低扣到 0）。
+- Column A can be one student's email, a class (e.g. `2B`), or `ALL` (every student).
+- Each student receives each gift only once. Next time they open the game they'll see "🎁 Your teacher sent you … coins!".
+- A negative number in column B takes coins away (never below 0).
 
-### 加单字（words.js）
+### Adding words (words.js)
 
-1. 在 GitHub 打开 `words.js`，按 ✏️ 编辑。
-2. 在对应的词库里，把新单字加进引号里，用空格隔开。只能用英文字母 a–z，重复的字会自动去掉。
-3. 按 **Commit changes** 保存，1–3 分钟后生效。
+1. Open `words.js` on GitHub and click ✏️ to edit.
+2. Add new words inside the quotes of the right word bank, separated by spaces. Use only the letters a–z; duplicates are removed automatically.
+3. Click **Commit changes** to save. The change appears after 1–3 minutes.
 
-> 只有在 `Code.gs` 程序本身有更新时，才需要重新部署：
-> 1. 贴上新的程序，按保存。在函数选单选 **setup**，按 **▶ Run** 一次（会补上新的分页和栏位，不会删除资料）。
-> 2. 按 **部署 → 管理部署作业**，按 ✏️。
-> 3. 「版本」选 **新版本**，按 **部署**。
+> You only need to redeploy when `Code.gs` itself is updated:
+> 1. Paste the new code and save. Choose **setup** in the function menu and click **▶ Run** once (it adds any new tabs and columns without deleting data).
+> 2. Click **Deploy → Manage deployments**, then click ✏️.
+> 3. Set "Version" to **New version** and click **Deploy**.
 >
-> 这样网址不会变，不用改 `config.js`。
+> The URL stays the same, so `config.js` doesn't need to change.
 
 ---
 
-## 游戏说明（给学生）
+## How to play (for students)
 
-- 打出敌机上的单字就会锁定并开火，整个字打完就能击落。
-- 敌机撞到自己会扣 1 ♥，♥ 扣完游戏就结束。每打倒一个 Boss 会补回 1 ♥。
-- 按键：
-  - `Backspace`：放弃目前锁定的目标
-  - `Esc`：暂停
-  - `1`：💣 清屏
-  - `2`：❄️ 冻结敌人 5 秒
-  - `3`：🛡️ 护盾（挡一次攻击）
-- 很多机体有**必杀技**：连续打对几个字后按 `Space` 发动（画面下方 ⚡ 会显示进度）。
-- 机体只是玩法不同，没有「越贵越强」：
-  - 血量都在 4–6 ♥ 之间
-  - 血多的机体金币收入较少
-  - 金币只能买机体，不能买道具
-- 15 架机体都是原创设计，参考历代作品主角机和第一反派机的风格：
+- Type the word on an enemy to lock on and fire. Finish the word to destroy it.
+- An enemy that reaches you costs 1 ♥. Lose all your ♥ and the game ends. Every boss you defeat gives back 1 ♥.
+- Keys:
+  - `Backspace`: release your current target
+  - `Esc`: pause
+  - `1`: 💣 clear the screen
+  - `2`: ❄️ freeze enemies for 5 seconds
+  - `3`: 🛡️ shield (blocks one hit)
+- Many mechs have a **special move**: type several words in a row without a mistake, then press `Space` (the ⚡ at the bottom shows your progress).
+- Mechs just play differently. A more expensive mech is **not** simply stronger:
+  - Every mech has 4–6 ♥
+  - Mechs with more ♥ earn fewer coins
+  - Coins only buy mechs, never items
+- All 15 mechs are original designs inspired by the hero and first-rival mechs of classic anime series:
 
-| 机体 | 风格参考 | 价钱 | ♥ | 特点 |
+| Mech | Style | Price | ♥ | Features |
 |---|---|---|---|---|
-| VANGUARD | UC 主角机 | 免费 | 5 | 平衡型，每关开始自带护盾 |
-| RED COMET | UC 第一反派（红色单眼） | 300 | 4 | 金币 +20% |
-| AILE STRIKER | SEED 主角机 | 300 | 5 | 道具掉率 ×1.6，金币 −10% |
-| CRIMSON AEGIS | SEED 第一反派 | 400 | 5 | 必杀：连续 3 字 → 击落最近 1 个目标 |
-| OVER FLAG | 00 第一反派 | 400 | 4 | Boss 导弹慢 25%，金币 +10% |
-| ZENITH | UC（Z 系） | 600 | 5 | 必杀：连续 5 字 → 冻结敌人 4 秒 |
-| SOVEREIGN | UC 反派（重装） | 600 | 6 | 必杀：连续 6 字 → 击落 2 个目标，金币 −20% |
-| BLADE ANGEL | 00 主角机 | 800 | 4 | 必杀：连续 5 字 → 敌人减速一半 6 秒 |
-| LIBERTY | SEED 主角机（蓝羽翼） | 900 | 5 | 必杀：连续 8 字 → 全弹发射击落 5 个目标 |
-| FATE | SEED 主角机（光之翼） | 900 | 5 | 必杀：连续 5 字 → 获得护盾 |
-| SCARLET BARON | UC 反派（红金） | 1000 | 5 | 金币 +10%；必杀：连续 3 字 → 击落最近 1 个 |
-| MONOCEROS | UC（独角兽） | 1000 | 5 | 必杀：连续 6 字 → 独角张开，敌人减速 8 秒 |
-| HALO NU | UC 主角机（浮游炮） | 1100 | 5 | 必杀：连续 7 字 → 击落 4 个目标 |
-| TWIN DRIVE | 00 主角机（双炉） | 1100 | 5 | 必杀：连续 6 字 → 冻结 6 秒，道具 ×1.2 |
-| SERAPH ZERO | 飞翼零式风格 | 1200 | 4 | 天使羽翼；必杀：连续 5 字 → 击落 3 个目标 |
+| VANGUARD | UC hero | Free | 5 | Balanced; starts every stage with a shield |
+| RED COMET | UC first rival (red mono-eye) | 300 | 4 | Coins +20% |
+| AILE STRIKER | SEED hero | 300 | 5 | Items drop ×1.6; coins −10% |
+| CRIMSON AEGIS | SEED first rival | 400 | 5 | Special: 3 words in a row → destroys the closest target |
+| OVER FLAG | 00 first rival | 400 | 4 | Boss missiles 25% slower; coins +10% |
+| ZENITH | UC (Z series) | 600 | 5 | Special: 5 in a row → freezes enemies for 4 s |
+| SOVEREIGN | UC rival (heavy) | 600 | 6 | Special: 6 in a row → destroys 2 targets; coins −20% |
+| BLADE ANGEL | 00 hero | 800 | 4 | Special: 5 in a row → enemies at half speed for 6 s |
+| LIBERTY | SEED hero (blue wings) | 900 | 5 | Special: 8 in a row → full burst destroys 5 targets |
+| FATE | SEED hero (wings of light) | 900 | 5 | Special: 5 in a row → gives you a shield |
+| SCARLET BARON | UC rival (red and gold) | 1000 | 5 | Coins +10%; special: 3 in a row → destroys the closest target |
+| MONOCEROS | UC (unicorn) | 1000 | 5 | Special: 6 in a row → the horn opens and enemies slow down for 8 s |
+| HALO NU | UC hero (fin funnels) | 1100 | 5 | Special: 7 in a row → destroys 4 targets |
+| TWIN DRIVE | 00 hero (twin drives) | 1100 | 5 | Special: 6 in a row → freezes enemies for 6 s; items ×1.2 |
+| SERAPH ZERO | Winged angel style | 1200 | 4 | Angel wings; special: 5 in a row → destroys 3 targets |
 
-### 多人连线（2–4 人）
+### Multiplayer (2–4 players)
 
-1. 每个人都要用**学校账号登入**。
-2. 一个人在机库按 **👥 MULTIPLAYER → CREATE ROOM**，画面会出现 5 个字的**房间号**。
-   - 难度和词库用这个人机库里的设定。
-   - 可以选 3 关、5 关，或无限关。
-3. 其他人按 **👥 MULTIPLAYER**，输入房间号，按 **JOIN**。
-   - 也可以由开房的人按 **COPY INVITE LINK**，把邀请连结贴到班级群组，同学点连结、登入后就会自动进房。
-4. 人到齐后，开房的人按 **START MATCH**。
+1. Everyone must **sign in with their school account**.
+2. One player clicks **👥 MULTIPLAYER → CREATE ROOM** in the hangar. A 5-character **room code** appears.
+   - The match uses this player's difficulty and word bank from the hangar.
+   - Choose 3 stages, 5 stages, or endless.
+3. Everyone else clicks **👥 MULTIPLAYER**, enters the room code, and clicks **JOIN**.
+   - Or the host clicks **COPY INVITE LINK** and pastes the link into the class chat. Classmates who open the link and sign in join the room automatically.
+4. When everyone is in, the host clicks **START MATCH**.
 
-**玩法**
-- 大家在同一个战场，每个人都可以打任何一个敌人，**谁先打完那个字，分数就归谁**（「抢射」）。
-- 敌人会**平均攻击每一位玩家**。标签左边的颜色代表它正在飞向谁，红框代表飞向你。所以要有策略：先保护自己，还是去抢别人的分数？
-- 标签下方的彩色小条，显示其他人打到哪里了。
-- 道具和必杀技只影响「飞向你的敌人」。
-- 被击落的玩家会变成观战，其他人继续。最后按分数排名。
-- 多人模式的成绩会记录给老师（Scores 分页的 Mode 栏写 `Multi`），但**不上排行榜**，因为被抢分会让 WPM 变低，这样对单人排行榜才公平。
-
----
-
-## 成绩怎么算
-
-- **WPM**：打对的字母数 ÷ 5 ÷ 实际作战分钟数。关卡开场动画和过关画面不算在时间内。
-- **准确率**：打对的按键数 ÷ 全部按键数。
-- **坚持时间**：从开始到结束的秒数，暂停的时间不算。
-- 玩不到 20 秒或按键少于 20 下的局，不会记录。
-- 单字以「抽牌」方式出现：整个词库轮完一遍之前，同一个字不会重复出现。
-
-**排行榜**
-- 每个难度分开排，分「本周」和「全部时间」两个榜。
-- 以 WPM 排名，准确率要达到 80% 以上才会上榜。
-- 只算单人模式，管理员不列入。
-- 每个学生只列最佳的一次，而且只显示花名。
-- 「本周」按马来西亚时间计算，从星期一 00:00 开始。
-
-**老师后台**
-- 每班平均速度
-- 每位学生的最佳成绩和进步幅度（最近 3 局平均 − 最早 3 局平均）
-- 各班最常打错的 20 个单字
+**How it works**
+- Everyone shares one battlefield and can shoot any enemy. **Whoever finishes the word first gets the points** (you can steal kills).
+- Enemies **attack every player equally**. The color on the left of a word label shows who that enemy is flying at, and a red frame means it's coming for you. So choose your strategy: protect yourself first, or steal points from others?
+- The small colored bars under a word show how far other players have typed it.
+- Items and special moves only affect enemies flying at you.
+- Players who get shot down watch the rest of the match while the others keep going. Players are ranked by score at the end.
+- Multiplayer games are recorded for the teacher (the Mode column in the Scores tab says `Multi`) but **don't count for the leaderboard**. Having kills stolen lowers your WPM, so leaving them out keeps the solo leaderboard fair.
 
 ---
 
-## 隐私与安全
+## How scores work
 
-- 老师密码只存在您的 Google Sheet 里，由 Apps Script 检查，**不在公开的网页代码里**。
-- 排行榜只送出花名、WPM、准确率和日期，**不会送出真实姓名或邮箱**。
-- 学生登入时，Apps Script 会向 Google 核对登入凭证，确认是 `@foonyew.edu.my` 账号才接受成绩。所以别人就算知道接收网址，也没办法冒充学生交成绩。
-- 学生的登入状态只保存在当前的浏览器分页，关掉浏览器就会自动登出。学校电脑是共用的，还是请提醒学生玩完按 **Sign out**。
-- 如果成绩送出失败（例如网络断线），游戏照常显示成绩，并把成绩暂存在这台电脑。12 小时内下次打开游戏时会自动补送。
+- **WPM**: correctly typed letters ÷ 5 ÷ minutes of actual combat. Stage intros and stage-clear screens don't count toward the time.
+- **Accuracy**: correct keystrokes ÷ all keystrokes.
+- **Time survived**: seconds from start to finish, not counting time spent paused.
+- Games shorter than 20 seconds or with fewer than 20 keystrokes are not recorded.
+- Words are drawn like cards from a deck: no word repeats until the whole word bank has been used.
+
+**Leaderboard**
+- Separate boards for each difficulty, each with "This week" and "All time".
+- Ranked by WPM; accuracy must be at least 80% to appear.
+- Solo games only; admins are not included.
+- Each student appears once, with their best game, and only their nickname is shown.
+- "This week" uses Malaysia time and starts on Monday at 00:00.
+
+**Teacher dashboard**
+- Average speed for each class
+- Each student's best score and improvement (average of the latest 3 games − average of the first 3 games)
+- The 20 words each class mistypes most often
 
 ---
 
-## 常见问题
+## Privacy and security
 
-**学生看到 "Can't reach the school server"**
-- 请检查步骤 B-7 的「谁可以存取」是不是 **所有人（Anyone）**。
-- 也请检查 `config.js` 里的网址是否完整，结尾要是 `/exec`。
+- The teacher password is stored only in your Google Sheet and is checked by Apps Script. **It is not in the public web page code.**
+- The leaderboard sends out only nicknames, WPM, accuracy and dates. **Real names and emails are never sent.**
+- When a student signs in, Apps Script checks the sign-in token with Google and accepts scores only from `@foonyew.edu.my` accounts. Even someone who knows the backend URL can't submit scores pretending to be a student.
+- A student's sign-in is kept only in the current browser tab and ends when the browser is closed. School computers are shared, so please still remind students to click **Sign out** when they finish.
+- If a score can't be uploaded (for example, the network is down), the game still shows the result and keeps it on that computer. It is sent automatically the next time the game is opened, within 12 hours.
 
-**登入按钮没有出现**
-- 请检查 Settings 分页的 `GoogleClientId` 有没有填。
-- 请检查步骤 A 的 Authorized JavaScript origins 是不是 `https://claudepro-fyhs.github.io`。
+---
 
-**学校电脑跑得很卡**
-- 在机库（Hangar）按 **GRAPHICS: LOW**。
-- 游戏开始几秒后如果侦测到很卡，也会自动切到低画质。
+## FAQ
 
-**多人连线连不上**
-- 连线用的是 WebRTC 点对点技术，房间号透过免费的 PeerJS 公共服务交换，不需要额外设定。
-- 同一个学校网络里通常没问题。如果学校防火墙挡住了，会出现 "Could not connect" 的讯息：
-  - 请学校 IT 开放 `0.peerjs.com` 和 WebRTC，或者
-  - 告诉我，我可以改用 Google Firebase 来连线（需要多做一个免费的设定）。
-- 开房的人如果关掉网页或断线，这场比赛会结束，大家各自看到成绩。
+**Students see "Can't reach the school server"**
+- Check that "Who has access" in Step B-7 is set to **Anyone**.
+- Check that the URL in `config.js` is complete and ends with `/exec`.
 
-**全班同时交成绩会不会塞车？**
-- Apps Script 会让成绩一个一个排队写入。
-- 偶尔太挤而失败的，游戏会暂存在电脑里，之后自动补送。
+**The sign-in button doesn't appear**
+- Check that `GoogleClientId` is filled in on the Settings tab.
+- Check that the Authorized JavaScript origin in Step A is `https://claudepro-fyhs.github.io`.
+
+**The game runs slowly on school computers**
+- Click **GRAPHICS: LOW** in the hangar.
+- If the game detects that it's running slowly in the first few seconds, it also switches to low graphics automatically.
+
+**Multiplayer won't connect**
+- Multiplayer uses peer-to-peer WebRTC. Room codes are matched through the free public PeerJS service, so no extra setup is needed.
+- It usually works within the same school network. If the school firewall blocks it, players see a "Could not connect" message:
+  - ask the school IT team to allow `0.peerjs.com` and WebRTC, or
+  - contact the maintainer to switch to Google Firebase for connections (this needs one extra free setup step).
+- If the host closes the page or loses connection, the match ends and everyone sees their own results.
+
+**Will scores get jammed if the whole class submits at once?**
+- Apps Script writes scores one at a time in a queue.
+- If a submission occasionally fails because it's too busy, the game keeps it on the computer and sends it again automatically later.
