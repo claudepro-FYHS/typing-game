@@ -46,7 +46,7 @@ const S = {
   remote: { classes: store.get("mst_classes", CFG.FALLBACK_CLASSES), clientId: "", minAccuracy: 80, loaded: false },
   session: store.sget("mst_session", null), // {token, email, exp, player, admin}
   guest: store.get("mst_guest", { coins: 0, owned: ["starter"], selected: "starter" }),
-  prefs: Object.assign({ diff: "Normal", bank: "everyday", quality: "high", sound: true }, store.get("mst_prefs", {})),
+  prefs: Object.assign({ diff: "Normal", bank: "everyday", quality: "high", sound: true, music: true, meanings: true, bg: "deep", shopTab: "mechs" }, store.get("mst_prefs", {})),
   lastMe: 0,
 };
 if (S.session && Date.now() > S.session.exp) { S.session = null; store.sset("mst_session", null); }
@@ -104,10 +104,10 @@ function renderUserChip() {
   if (isSchool()) {
     const p = S.session.player;
     const who = p ? `${esc(p.nickname)} <span class="small">(${esc(p.cls)}-${esc(p.seat)})</span>${p.admin ? ' <span class="small" style="color:var(--gold)">ADMIN</span>' : ""}` : esc(S.session.email);
-    el.innerHTML = `<span>👤 ${who}</span><span class="coins">🪙 ${p ? coinText(p.coins) : 0}</span><button id="btn-signout">Sign out</button>`;
+    el.innerHTML = `<span>👤 ${who}</span>${p ? `<span class="lv">LV ${myLevel()}</span>` : ""}<span class="coins">🪙 ${p ? coinText(p.coins) : 0}</span><button id="btn-signout">Sign out</button>`;
     $("#btn-signout").onclick = signOut;
   } else if (S.guestMode) {
-    el.innerHTML = `<span>Guest</span><span class="coins">🪙 ${S.guest.coins}</span><button id="btn-signin">Sign in</button>`;
+    el.innerHTML = `<span>Guest</span><span class="lv">LV ${myLevel()}</span><span class="coins">🪙 ${S.guest.coins}</span><button id="btn-signin">Sign in</button>`;
     $("#btn-signin").onclick = () => { S.guestMode = false; showLogin(); };
   } else el.innerHTML = "";
 }
@@ -135,6 +135,10 @@ async function loadRemoteConfig() {
       S.remote.clientId = c.clientId || "";
       S.remote.minAccuracy = c.minAccuracy;
       S.remote.loaded = true;
+      S.remote.event = c.event || null;
+      addEventBank();
+      renderEventBanners();
+      if (S.currentScreen === "scr-hangar") { renderBankSelect(); renderPilot(); }
     }
   } catch (e) { console.warn("config load failed", e); }
 }
@@ -213,7 +217,7 @@ async function refreshMe(force) {
   S.lastMe = Date.now();
   try {
     const r = await api({ action: "me", token: S.session.token }, "POST", 12000);
-    if (r.ok && r.player) { setPlayer(r.player); giftToast(r); renderUserChip(); if (S.currentScreen === "scr-hangar") renderMechList(); }
+    if (r.ok && r.player) { setPlayer(r.player); giftToast(r); renderUserChip(); if (S.currentScreen === "scr-hangar") { renderMechList(); renderSkinList(); renderPilot(); } }
   } catch (e) {}
 }
 
@@ -263,15 +267,121 @@ function showHangar() {
   const w = wallet();
   if (!previewId || !MECH_BY_ID[previewId]) previewId = w.selected || "starter";
   renderMechList();
+  renderSkinList();
+  setShopTab(S.prefs.shopTab);
   $$("#diff-seg button").forEach(b => b.classList.toggle("active", b.dataset.d === S.prefs.diff));
-  const bs = $("#bank-select");
-  bs.innerHTML = Object.entries(WORD_BANKS).map(([k, b]) => `<option value="${k}">${esc(b.name)} (${b.words.length})</option>`).join("");
-  bs.value = S.prefs.bank;
+  renderBankSelect();
+  renderPilot();
   $("#btn-edit-profile").style.display = isSchool() ? "" : "none";
   $("#btn-quality").textContent = "GRAPHICS: " + S.prefs.quality.toUpperCase();
-  $("#btn-sound").textContent = "SOUND: " + (S.prefs.sound ? "ON" : "OFF");
+  renderToggles();
   $("#shop-msg").textContent = "";
+  renderEventBanners();
   refreshMe();
+}
+function renderToggles() {
+  $("#btn-sound").textContent = "SOUND: " + (S.prefs.sound ? "ON" : "OFF");
+  $("#btn-music").textContent = "MUSIC: " + (S.prefs.music ? "ON" : "OFF");
+  $("#btn-meaning").textContent = "中文: " + (S.prefs.meanings ? "ON" : "OFF");
+}
+function renderBankSelect() {
+  const bs = $("#bank-select");
+  const entries = Object.entries(WORD_BANKS).sort((a, b) => (b[1].event ? 1 : 0) - (a[1].event ? 1 : 0));
+  bs.innerHTML = entries.map(([k, b]) => `<option value="${k}">${esc(b.name)} (${b.words.length})</option>`).join("");
+  if (!WORD_BANKS[S.prefs.bank]) S.prefs.bank = "everyday";
+  bs.value = S.prefs.bank;
+}
+function renderEventBanners() {
+  const ev = activeEvent();
+  if (typeof setEnvironment === "function" && !G.running) setEnvironment(envId || "deep", ev && ev.id);
+  for (const id of ["#login-event", "#hangar-event"]) {
+    const el = $(id); if (!el) continue;
+    el.classList.toggle("show", !!ev);
+    if (ev) el.innerHTML = `${ev.icon} <b>${esc(ev.name)} event!</b> Special boss <b>${esc(ev.boss)}</b>, festival word bank and <b>coins ×${ev.bonus}</b> until ${esc(ev.end)}.`;
+  }
+}
+function renderPilot() {
+  const pr = profile(), lv = myLevel(), xp = pr.xp || 0;
+  const cur = xpToReach(lv), next = xpToReach(lv + 1);
+  $("#pilot-lv").textContent = `LV ${lv}`;
+  $("#pilot-xpbar").style.width = lv >= 50 ? "100%" : `${Math.min(100, (xp - cur) / (next - cur) * 100).toFixed(1)}%`;
+  $("#pilot-xptext").textContent = isAdmin() ? "Admin: everything unlocked" : lv >= 50 ? `${xp} XP — max level!` : `${xp} / ${next} XP to LV ${lv + 1}`;
+  const earned = isAdmin() ? BADGES.map(b => b.id) : (pr.badges || []);
+  const ts = $("#title-select");
+  ts.innerHTML = `<option value="">— no title —</option>` + BADGES.filter(b => earned.includes(b.id)).map(b => `<option value="${b.id}">${b.icon} ${esc(b.name)}</option>`).join("");
+  ts.value = earned.includes(pr.title) ? pr.title : "";
+  $("#btn-badges").textContent = `🏅 BADGES ${earned.length}/${BADGES.length}`;
+  const nextBg = BACKGROUNDS.find(b => b.level > lv);
+  $("#pilot-unlocks").innerHTML = `Bosses unlocked: <b>${bossPoolSize(lv)}/${MODELS.BOSSES.filter(b => !b.event).length}</b>` +
+    (lv < 11 ? ` · next boss at LV ${lv + 1}` : "") + (nextBg ? ` · ${esc(nextBg.name)} battlefield at LV ${nextBg.level}` : "");
+  const bg = $("#bg-select");
+  bg.innerHTML = BACKGROUNDS.map(b => `<option value="${b.id}" ${b.level > lv ? "disabled" : ""}>${b.level > lv ? "🔒 " : ""}${esc(b.name)}${b.level > lv ? ` (LV ${b.level})` : ""}</option>`).join("");
+  if (!BACKGROUNDS.some(b => b.id === S.prefs.bg && b.level <= lv)) S.prefs.bg = "deep";
+  bg.value = S.prefs.bg;
+  setEnvironment(S.prefs.bg, activeEvent() && activeEvent().id);
+}
+function showBadges() {
+  const pr = profile(), earned = isAdmin() ? BADGES.map(b => b.id) : (pr.badges || []), st = pr.stats || emptyStats();
+  openModal(`<h2>BADGES ${earned.length}/${BADGES.length}</h2>
+    <p class="small muted">Earned badges can be used as your title on the leaderboard. Kills ${st.kills} · Bosses ${st.bosses} · Best combo ${st.bestCombo} · Best WPM ${st.bestWpm} · Day streak ${st.streak}</p>
+    <div class="badge-grid">${BADGES.map(b => `<div class="badge ${earned.includes(b.id) ? "" : "locked"}"><span class="bi">${b.icon}</span><b>${esc(b.name)}</b>${esc(b.desc)}</div>`).join("")}</div>`);
+}
+function openModal(html, actionsHtml) {
+  $("#modal-body").innerHTML = html;
+  $$("#modal-actions .extra").forEach(e => e.remove());
+  if (actionsHtml) $("#btn-modal-close").insertAdjacentHTML("beforebegin", actionsHtml);
+  $("#modal").classList.add("show");
+}
+function closeModal() { $("#modal").classList.remove("show"); }
+$("#btn-modal-close").onclick = closeModal;
+$("#modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeModal(); });
+$("#btn-badges").onclick = showBadges;
+$("#title-select").onchange = (e) => {
+  const id = e.target.value, pr = profile();
+  pr.title = id; saveWallet();
+  if (isSchool()) api({ action: "setTitle", token: S.session.token, title: id }).then(r => { if (r.player) setPlayer(r.player); }).catch(() => {});
+};
+$("#bg-select").onchange = (e) => { S.prefs.bg = e.target.value; savePrefs(); setEnvironment(S.prefs.bg, activeEvent() && activeEvent().id); };
+$("#btn-music").onclick = () => { S.prefs.music = !S.prefs.music; savePrefs(); renderToggles(); };
+$("#btn-meaning").onclick = () => { S.prefs.meanings = !S.prefs.meanings; savePrefs(); renderToggles(); };
+$$("#shop-seg button").forEach(b => b.onclick = () => setShopTab(b.dataset.tab));
+function setShopTab(tab) {
+  S.prefs.shopTab = tab === "paint" ? "paint" : "mechs"; savePrefs();
+  $$("#shop-seg button").forEach(b => b.classList.toggle("active", b.dataset.tab === S.prefs.shopTab));
+  $("#mech-list").style.display = S.prefs.shopTab === "mechs" ? "" : "none";
+  $("#skin-list").style.display = S.prefs.shopTab === "paint" ? "" : "none";
+}
+function renderSkinList() {
+  const pr = profile(), w = wallet();
+  $("#skin-list").innerHTML = `<p class="small muted" style="margin:0 0 4px">Paint jobs work on every mech you own.</p>` + SKINS.map(k => {
+    const owned = isAdmin() || pr.skins.includes(k.id), sel = pr.skin === k.id;
+    const action = sel ? '<span class="ok small">✔ IN USE</span>' : owned ? `<button class="btn" data-skin-use="${k.id}" style="padding:5px 10px">USE</button>`
+      : `<button class="btn gold" data-skin-buy="${k.id}" style="padding:5px 10px" ${w.coins < k.price ? "disabled" : ""}>BUY 🪙${k.price}</button>`;
+    return `<div class="mech-card ${sel ? "sel" : ""}"><div class="top"><span class="name"><span class="swatch">${k.swatch.map(c => `<i style="background:${c}"></i>`).join("")}</span>${esc(k.name)}</span>${action}</div></div>`;
+  }).join("");
+  $$("#skin-list [data-skin-use]").forEach(b => b.onclick = () => selectSkin(b.dataset.skinUse));
+  $$("#skin-list [data-skin-buy]").forEach(b => b.onclick = () => buySkin(b.dataset.skinBuy, b));
+}
+function selectSkin(id) {
+  const pr = profile(); pr.skin = id; saveWallet(); renderSkinList(); renderMechList();
+  if (isSchool()) api({ action: "selectSkin", token: S.session.token, skin: id }).catch(() => {});
+}
+async function buySkin(id, btn) {
+  const k = SKIN_BY_ID[id], msg = $("#shop-msg"), pr = profile();
+  msg.textContent = "";
+  if (isSchool()) {
+    btn.disabled = true; btn.textContent = "…";
+    try {
+      const r = await api({ action: "buySkin", token: S.session.token, skin: id });
+      if (r.player) setPlayer(r.player);
+      if (!r.ok) msg.textContent = r.error === "not_enough_coins" ? "Not enough coins yet — keep typing!" : "Purchase failed (" + r.error + ").";
+      else sfx("item");
+    } catch (e) { msg.textContent = "Can't reach the school server. Try again later."; }
+  } else {
+    if (S.guest.coins < k.price) { msg.textContent = "Not enough coins yet — keep typing!"; return; }
+    S.guest.coins -= k.price; pr.skins.push(id); pr.skin = id; saveWallet(); sfx("item");
+  }
+  renderSkinList(); renderMechList();
 }
 function specialText(m) { return m.special ? `⚡ needs ${m.special.charge} in a row` : ""; }
 function renderMechList() {
@@ -296,7 +406,7 @@ function renderMechList() {
   $$("#mech-list [data-use]").forEach(b => b.onclick = () => selectMech(b.dataset.use));
   $$("#mech-list [data-buy]").forEach(b => b.onclick = () => buyMech(b.dataset.buy, b));
   $("#mech-title").textContent = MECH_BY_ID[previewId].name;
-  setPreviewMech(previewId);
+  setPreviewMech(previewId, profile().skin);
   renderUserChip();
 }
 function selectMech(id) {
@@ -335,11 +445,15 @@ function ensureOwnedSelection() {
   if (w.selected !== previewId) selectMech(previewId);
   return true;
 }
+function soloOptions() {
+  const ev = activeEvent();
+  return { mode: "solo", role: "solo", myPid: "me", diff: S.prefs.diff, bank: S.prefs.bank, stages: 0, bg: S.prefs.bg, level: myLevel(), event: ev ? ev.id : "",
+    players: [{ pid: "me", nick: isSchool() && S.session.player ? S.session.player.nickname : "You", mech: wallet().selected, skin: profile().skin }] };
+}
 $("#btn-launch").addEventListener("click", () => {
   if (!ensureOwnedSelection()) return;
   typer.focus(); // must happen inside the click so phone keyboards open
-  startGame({ mode: "solo", role: "solo", myPid: "me", diff: S.prefs.diff, bank: S.prefs.bank, stages: 0,
-    players: [{ pid: "me", nick: isSchool() ? S.session.player.nickname : "You", mech: wallet().selected }] });
+  startGame(soloOptions());
 });
 $("#btn-multi").addEventListener("click", () => { if (ensureOwnedSelection()) showMulti(); });
 

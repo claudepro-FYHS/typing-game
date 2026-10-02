@@ -15,7 +15,7 @@ function peerOptions() {
 function genCode() { let c = ""; for (let i = 0; i < 5; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]; return c; }
 function myInfo() {
   const p = S.session.player;
-  return { nick: p.nickname, cls: p.cls, mech: wallet().selected };
+  return { nick: p.nickname, cls: p.cls, mech: wallet().selected, skin: profile().skin, level: myLevel() };
 }
 function mpMsg(text, ok) { const el = $("#mp-msg"); el.className = ok ? "muted" : "err"; el.textContent = text || ""; }
 
@@ -54,7 +54,7 @@ function renderLobby() {
   const st = NET.settings || {};
   $("#mp-room-settings").textContent = st.diff ? `${st.diff} · ${(WORD_BANKS[st.bank] || {}).name || ""} · ${st.stages ? st.stages + " stages" : "Endless"} · ${(NET.lobby || []).length}/4 pilots` : "Connecting…";
   $("#mp-players").innerHTML = (NET.lobby || []).map((p, i) => `<div class="prow"><span class="dot" style="background:${PCOLORS[i % 4]}"></span>
-    <span class="who"><b>${esc(p.nick)}</b> <span class="muted small">${esc(p.cls || "")}</span>${p.pid === "p0" ? ' <span class="small" style="color:var(--gold)">HOST</span>' : ""}${p.pid === NET.myPid ? ' <span class="small">(you)</span>' : ""}</span>
+    <span class="who"><b>${esc(p.nick)}</b> <span class="lv small">LV${p.level || 1}</span> <span class="muted small">${esc(p.cls || "")}</span>${p.pid === "p0" ? ' <span class="small" style="color:var(--gold)">HOST</span>' : ""}${p.pid === NET.myPid ? ' <span class="small">(you)</span>' : ""}</span>
     <span class="small muted">${esc((MECH_BY_ID[p.mech] || MECHS[0]).name)}</span></div>`).join("") || '<p class="muted">Waiting…</p>';
   const host = NET.role === "host";
   $("#btn-mp-start").style.display = host ? "" : "none";
@@ -70,7 +70,7 @@ function netHost(retry) {
   netLeave();
   const code = genCode();
   NET = { role: "host", code: null, myPid: "p0", conns: {}, nextPid: 1, started: false,
-    settings: { diff: S.prefs.diff, bank: S.prefs.bank, stages: Number($("#mp-stages").value) },
+    settings: { diff: S.prefs.diff, bank: S.prefs.bank, stages: Number($("#mp-stages").value), level: myLevel(), event: activeEvent() ? activeEvent().id : "" },
     lobby: [Object.assign({ pid: "p0" }, myInfo())] };
   mpMsg("Creating room…", true);
   renderLobby();
@@ -97,7 +97,8 @@ function hostOnData(conn, d) {
     if (NET.lobby.length >= 4) { conn.send({ e: "reject", reason: "This room is full (4 pilots)." }); setTimeout(() => conn.close(), 500); return; }
     const pid = "p" + (NET.nextPid++);
     conn.pid = pid; NET.conns[pid] = conn;
-    NET.lobby.push({ pid, nick: String(d.nick || "Pilot").slice(0, 12), cls: String(d.cls || "").slice(0, 8), mech: MECH_BY_ID[d.mech] ? d.mech : "starter" });
+    NET.lobby.push({ pid, nick: String(d.nick || "Pilot").slice(0, 12), cls: String(d.cls || "").slice(0, 8), mech: MECH_BY_ID[d.mech] ? d.mech : "starter",
+      skin: SKIN_BY_ID[d.skin] ? d.skin : "default", level: Math.max(1, Math.min(50, Number(d.level) || 1)) });
     conn.send({ e: "welcome", pid });
     lobbyBroadcast();
     return;

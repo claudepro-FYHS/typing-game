@@ -18,9 +18,10 @@ Play solo, or team up with 2–4 classmates online and race each other for point
 | `index.html` | The game page (screens, leaderboard, teacher dashboard) | No |
 | `config.js` | Where the Apps Script URL goes | **Once, during first-time setup** |
 | `words.js` | Word banks (10 banks, about 2,600 words) | Only to add words (see below) |
+| `meanings.js` | Chinese meanings shown when a word is destroyed | Only to add meanings for new words |
 | `apps-script/Code.gs` | The backend that you paste into Google Apps Script | No (just copy and paste it, following the steps) |
 | `models.js` | 3D models and animations: 15 mechs, 13 enemy types, 15 bosses | No |
-| `js/` | Game code (solo, multiplayer, leaderboard, teacher dashboard) | No |
+| `js/` | Game code (solo, multiplayer, levels and badges, leaderboard, teacher dashboard) | No |
 | `lib/` | Three.js (3D engine) and PeerJS (multiplayer), both MIT-licensed | No |
 
 ---
@@ -60,7 +61,7 @@ Play solo, or team up with 2–4 classmates online and race each other for point
    2. If you see "Google hasn't verified this app", click **Advanced**, then **Go to … (unsafe)**. This is your own script, so it is safe.
    3. Click **Allow**.
    4. When the execution log shows `Setup done. 设置完成！`, it worked.
-6. Back in the spreadsheet you'll see six new tabs: **Scores, Players, Settings, BannedWords, Admins, CoinGifts**. In the **Settings** tab, edit column B:
+6. Back in the spreadsheet you'll see seven new tabs: **Scores, Players, Settings, BannedWords, Admins, CoinGifts, Events**. In the **Settings** tab, edit column B:
    - **Classes**: your classes, separated by commas, e.g. `1A, 1B, 1C, 2A, 2B`
    - **TeacherPassword**: the teacher dashboard password. **Be sure to change** the default `change-me-2026`.
    - **GoogleClientId**: paste the Client ID from Step A
@@ -118,6 +119,7 @@ Everything is changed in the Google Sheet. **You don't need to touch GitHub.** C
 | Set up admins | **Admins** tab → email in column A, `YES` in column B (see below) |
 | Give coins to students | **CoinGifts** tab (see below) |
 | Change one student's coins directly | **Players** tab → edit the `Coins` cell |
+| Festival event dates | **Events** tab (see below) |
 
 ### Admins (Admins tab)
 
@@ -141,11 +143,26 @@ Each row is one gift:
 - Each student receives each gift only once. Next time they open the game they'll see "🎁 Your teacher sent you … coins!".
 - A negative number in column B takes coins away (never below 0).
 
+### Festival events (Events tab)
+
+Three built-in festival events: `midautumn` (Mid-Autumn Festival), `cny` (Chinese New Year) and `anniversary` (school anniversary).
+
+| Column A: event | Column B: start | Column C: end | Column D: note |
+|---|---|---|---|
+| `midautumn` | 2026-09-18 | 2026-10-04 | |
+| `cny` | 2027-01-30 | 2027-02-20 | |
+| `anniversary` | *(fill in)* | *(fill in)* | |
+
+- Dates are in Malaysia time, written as `YYYY-MM-DD`. Change them every year.
+- During an event the game shows a banner and adds a festival word bank. Stages 1, 3, 5 … bring the festival boss (Jade Rabbit Moon / Golden Dragon / Centennial Titan), lanterns or fireworks fill the sky, and **coins are ×1.5**.
+- Playing during an event earns the **🏮 Festival Hero** badge.
+
 ### Adding words (words.js)
 
 1. Open `words.js` on GitHub and click ✏️ to edit.
 2. Add new words inside the quotes of the right word bank, separated by spaces. Use only the letters a–z; duplicates are removed automatically.
 3. Click **Commit changes** to save. The change appears after 1–3 minutes.
+4. Optional: add the word's Chinese meaning to `meanings.js` (one line: `word 中文`) so it shows up when the word is destroyed.
 
 > You only need to redeploy when `Code.gs` itself is updated:
 > 1. Paste the new code and save. Choose **setup** in the function menu and click **▶ Run** once (it adds any new tabs and columns without deleting data).
@@ -191,6 +208,24 @@ Each row is one gift:
 | TWIN DRIVE | 00 hero (twin drives) | 1100 | 5 | Special: 6 in a row → freezes enemies for 6 s; items ×1.2 |
 | SERAPH ZERO | Winged angel style | 1200 | 4 | Angel wings; special: 5 in a row → destroys 3 targets |
 
+### Levels, badges, paint jobs and battlefields
+
+- **Pilot level:** every mission earns XP (kills, bosses, stages and typing speed). Levels go up to 50.
+  - Each level unlocks one more **boss** (5 bosses at LV 1, all 15 by LV 11).
+  - New **battlefields** unlock along the way: Earth Orbit (LV 3), Lunar Surface (LV 6), Asteroid Belt (LV 10), Space Colony (LV 15) and Crimson Nebula (LV 20).
+- **Badges:** 19 badges, such as *Combo Master* (50 words in a row), *Dedicated* (play on 5 days in one week), *Newtype* (80 WPM) and *Avenger* (destroy 20 revenge enemies). Click **🏅 BADGES** in the hangar to see them all.
+- **Titles:** choose an earned badge as your title. It appears next to your nickname on the leaderboard.
+- **Paint jobs:** the 🎨 **PAINT** tab in the hangar sells 7 paint jobs (Desert Camo, Arctic, Sakura, Black Ops, Neon Cyber, Royal Gold and Optical Camo). They work on every mech you own.
+
+### Fun extras
+
+- **Combo effects:** at 10, 25, 50 and 100 words in a row a big **COMBO** banner appears, your mech starts to glow, the screen edges light up and the music speeds up.
+- **Final blow:** when a boss goes down, the game switches to slow motion and the camera rushes in before the big explosion.
+- **Revenge enemies:** words you mistyped come back in your next solo game as golden ⭐ enemies worth **double points and coins**. Destroy one and that word leaves your revenge list.
+- **Chinese meanings:** when a word is destroyed, its Chinese meaning pops up (switch it off with the **中文** button in the hangar). Mistyped words on the results screen show their meanings too.
+- **Share card:** the results screen has **📸 SHARE CARD**, which makes a picture with your mech, WPM, accuracy, combo, level and title that students can save and share.
+- **Background music:** a small built-in soundtrack (switch it off with the **MUSIC** button).
+
 ### Multiplayer (2–4 players)
 
 1. Everyone must **sign in with their school account**.
@@ -220,10 +255,11 @@ Each row is one gift:
 - Words are drawn like cards from a deck: no word repeats until the whole word bank has been used.
 
 **Leaderboard**
+- **⚔️ Class Battle:** every enemy destroyed this week (solo and multiplayer) counts for the player's class. Classes are ranked by total kills, and last week's champion class is shown.
 - Separate boards for each difficulty, each with "This week" and "All time".
 - Ranked by WPM; accuracy must be at least 80% to appear.
 - Solo games only; admins are not included.
-- Each student appears once, with their best game, and only their nickname is shown.
+- Each student appears once, with their best game. Only their nickname, level and chosen title are shown.
 - "This week" uses Malaysia time and starts on Monday at 00:00.
 
 **Teacher dashboard**

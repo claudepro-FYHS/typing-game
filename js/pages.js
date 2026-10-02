@@ -16,11 +16,26 @@ async function loadLeaderboard(force) {
 }
 function renderLeaderboard() {
   $$("#lb-seg button").forEach(b => b.classList.toggle("active", b.dataset.d === lbDiff));
+  if (lbDiff === "Classes") return renderClassBattle();
+  $("#lb-note").textContent = `Only nicknames are shown. Ranked by typing speed (WPM); accuracy must be at least ${lbData.minAccuracy}%. The week starts on Monday.`;
   const board = (lbData.boards || {})[lbDiff] || { week: [], all: [] };
   const table = (title, rows) => `<div class="card"><h3>${title}</h3>${rows.length ? `<table><thead><tr><th>#</th><th>Nickname</th><th class="num">WPM</th><th class="num">Accuracy</th><th class="num">Date</th></tr></thead><tbody>` +
-    rows.map((r, i) => `<tr><td class="rank r${i + 1}">${i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</td><td class="nick">${esc(r.nickname)}</td><td class="num"><b>${r.wpm}</b></td><td class="num">${r.acc}%</td><td class="num muted">${fmtDate(r.time)}</td></tr>`).join("") +
+    rows.map((r, i) => `<tr><td class="rank r${i + 1}">${i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</td><td class="nick">${esc(r.nickname)}${r.level ? ` <span class="lv small">LV${r.level}</span>` : ""}${r.title && BADGE_BY_ID[r.title] ? `<span class="title-chip">${BADGE_BY_ID[r.title].icon} ${esc(BADGE_BY_ID[r.title].name)}</span>` : ""}</td><td class="num"><b>${r.wpm}</b></td><td class="num">${r.acc}%</td><td class="num muted">${fmtDate(r.time)}</td></tr>`).join("") +
     `</tbody></table>` : '<p class="muted">No scores yet — be the first!</p>'}</div>`;
   $("#lb-body").innerHTML = table("THIS WEEK", board.week) + table("ALL TIME", board.all);
+}
+function renderClassBattle() {
+  const cb = lbData.classBattle || { week: [] };
+  const rows = cb.week || [];
+  const max = Math.max(1, ...rows.map(r => r.kills));
+  $("#lb-note").textContent = "Class Battle: every enemy destroyed this week (solo and multiplayer) counts for your class. The week starts on Monday.";
+  $("#lb-body").innerHTML = `<div class="card" style="grid-column:1/-1"><h3>⚔️ CLASS BATTLE — THIS WEEK</h3>
+    ${cb.lastChampion ? `<p class="small">👑 Last week's champion: <b class="lv">${esc(cb.lastChampion.cls)}</b> with ${cb.lastChampion.kills} enemies destroyed</p>` : ""}
+    ${rows.length ? rows.map((r, i) => `<div class="cb-row" title="${esc(r.cls)}: ${r.kills} enemies destroyed by ${r.pilots} pilots in ${r.games} games">
+      <span class="rank ${r.kills > 0 ? "r" + (i + 1) : ""}">${r.kills > 0 && i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</span><span class="cls">${esc(r.cls)}</span>
+      <div class="track"><div class="fill" style="width:${(100 * r.kills / max).toFixed(1)}%"></div></div>
+      <span class="num small"><b>${r.kills}</b> kills · ${r.pilots} 👤</span></div>`).join("") : '<p class="muted">No battles yet this week — be the first!</p>'}
+  </div>`;
 }
 $$("#lb-seg button").forEach(b => b.onclick = () => { lbDiff = b.dataset.d; if (lbData) renderLeaderboard(); });
 $("#btn-lb-refresh").onclick = () => loadLeaderboard(true);
@@ -120,14 +135,23 @@ function frame(now) {
   a.needsUpdate = true;
   planet.rotation.y += dt * 0.01;
 
+  updateEnvironment(dt, speed);
   if (mode === "game" && G.running) {
-    if (!G.paused && !G.over) update(dt);
-    updateEffects(G.paused ? 0 : dt);
+    // FINAL BLOW slow motion when a boss goes down
+    const slow = G.slowmo > 0 ? 0.18 : 1;
+    if (G.slowmo > 0) G.slowmo = Math.max(0, G.slowmo - dt);
+    if (!G.paused && !G.over) update(dt * slow);
+    updateEffects(G.paused ? 0 : dt * slow);
     // camera sits high behind the mechs so enemies stay visible above their heads
     const portrait = camera.aspect < 0.8, n = G.players.length;
     camera.position.set(0, (portrait ? 7.6 : 6.3) + (n - 1) * 1.0, (portrait ? 17 : 12.5) + (n - 1) * (portrait ? 6 : 3.5));
     if (G.shake > 0) camera.position.add(new V3((Math.random() - 0.5) * G.shake, (Math.random() - 0.5) * G.shake, 0));
     camTarget.set(0, portrait ? 5.2 : 4.4, -40);
+    if (G.slowmo > 0 && G.slowFocus) {
+      const k = Math.sin(Math.min(1, (1.5 - G.slowmo) / 1.5) * Math.PI) * 0.55; // rush in and back out
+      camera.position.lerp(G.slowFocus.clone().add(new V3(0, 3, 32)), k);
+      camTarget.lerp(G.slowFocus, k);
+    }
     camera.lookAt(camTarget);
     positionTags();
   } else {
@@ -154,7 +178,8 @@ function frame(now) {
  *  BOOT
  * ===================================================================== */
 applyQuality();
-setPreviewMech((wallet() && wallet().selected) || "starter");
+setEnvironment("deep", null);
+setPreviewMech((wallet() && wallet().selected) || "starter", profile().skin);
 goPlayHome();
 requestAnimationFrame(frame);
 loadRemoteConfig().then(() => { if (S.currentScreen === "scr-login") showLogin(); });

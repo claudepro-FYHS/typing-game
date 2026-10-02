@@ -9,6 +9,7 @@
  *   Settings   ：Classes 班级列表（用逗号分隔）、TeacherPassword 老师后台密码、GoogleClientId
  *   Admins     ：管理员 email（金币无限、全部机体可用，成绩不上排行榜）
  *   CoinGifts  ：送金币（对象可以是 email、班级例如 2B，或 ALL 全部人）
+ *   Events     ：节日活动的日期（中秋 midautumn、新年 cny、校庆 anniversary）
  */
 
 var SHEET_SCORES = 'Scores';
@@ -17,13 +18,22 @@ var SHEET_SETTINGS = 'Settings';
 var SHEET_BANNED = 'BannedWords';
 var SHEET_ADMINS = 'Admins';
 var SHEET_GIFTS = 'CoinGifts';
+var SHEET_EVENTS = 'Events';
 
 var SCORE_HEADERS = ['Time', 'Class', 'Seat No', 'Name', 'Nickname', 'Email', 'Difficulty', 'Word Bank',
-  'WPM', 'Accuracy (%)', 'Survival (s)', 'Score', 'Stage', 'Mistyped Words', 'Mech', 'Mode'];
+  'WPM', 'Accuracy (%)', 'Survival (s)', 'Score', 'Stage', 'Mistyped Words', 'Mech', 'Mode', 'Kills', 'Max Combo'];
 var PLAYER_HEADERS = ['Email', 'Class', 'Seat No', 'Name', 'Nickname', 'Coins', 'Owned Mechs',
-  'Selected Mech', 'Last Updated', 'Gifts Received (auto)'];
+  'Selected Mech', 'Last Updated', 'Gifts Received (auto)', 'Owned Skins', 'Selected Skin', 'XP', 'Badges', 'Title',
+  'Stats (auto — do not edit)'];
 var ADMIN_HEADERS = ['Email', 'Unlimited coins (YES / NO)', 'Note'];
 var GIFT_HEADERS = ['Who: email / class (e.g. 2B) / ALL', 'Coins', 'Note', 'Gift ID (auto — do not edit)'];
+var EVENT_HEADERS = ['Event: midautumn / cny / anniversary', 'Start (YYYY-MM-DD)', 'End (YYYY-MM-DD)', 'Note'];
+var DEFAULT_EVENTS = [
+  ['midautumn', '2026-09-18', '2026-10-04', '中秋节 Mid-Autumn Festival'],
+  ['cny', '2027-01-30', '2027-02-20', '农历新年 Chinese New Year'],
+  ['anniversary', '', '', '校庆：请填上日期 School anniversary — fill in the dates'],
+];
+var EVENT_IDS = ['midautumn', 'cny', 'anniversary'];
 
 var DEFAULT_SETTINGS = [
   ['Classes', '1A, 1B, 1C, 2A, 2B, 2C, 3A, 3B, 3C', '班级列表，用逗号分隔。例如：1A, 1B, 2A'],
@@ -38,6 +48,8 @@ var MECH_PRICES = {
   starter: 0, redcomet: 300, aile: 300, aegis: 400, flag: 400, zenith: 600, sovereign: 600, bladeangel: 800,
   liberty: 900, fate: 900, baron: 1000, monoceros: 1000, nu: 1100, twin: 1100, seraph: 1200,
 };
+// 涂装价钱（要和网页 js/progress.js 里的 SKINS 一致）
+var SKIN_PRICES = { 'default': 0, desert: 300, arctic: 300, sakura: 400, blackops: 400, neon: 600, gold: 800, optical: 1000 };
 var ADMIN_COINS = 999999;
 var STAFF_CLASS = 'STAFF';
 
@@ -66,6 +78,10 @@ function setup() {
   ensureHeaders_(ss.getSheetByName(SHEET_PLAYERS), PLAYER_HEADERS);
   ensureSheet_(ss, SHEET_ADMINS, ADMIN_HEADERS);
   ensureSheet_(ss, SHEET_GIFTS, GIFT_HEADERS);
+  if (!ss.getSheetByName(SHEET_EVENTS)) {
+    var ev = ensureSheet_(ss, SHEET_EVENTS, EVENT_HEADERS);
+    DEFAULT_EVENTS.forEach(function (row) { ev.appendRow(row); });
+  }
   var bw = ss.getSheetByName(SHEET_BANNED);
   if (!bw) {
     bw = ss.insertSheet(SHEET_BANNED);
@@ -146,6 +162,9 @@ function doPost(e) {
       case 'submitScore': return json_(withLock_(function () { return submitScore_(body); }));
       case 'buyMech': return json_(withLock_(function () { return buyMech_(body); }));
       case 'selectMech': return json_(withLock_(function () { return selectMech_(body); }));
+      case 'buySkin': return json_(withLock_(function () { return buySkin_(body); }));
+      case 'selectSkin': return json_(withLock_(function () { return selectSkin_(body); }));
+      case 'setTitle': return json_(withLock_(function () { return setTitle_(body); }));
       case 'teacher': return json_(teacher_(body));
       case 'config': return json_(getPublicConfig_());
       case 'leaderboard': return json_(getLeaderboard_());
@@ -168,7 +187,30 @@ function withLock_(fn) {
 
 function getPublicConfig_() {
   var s = getSettings_();
-  return { ok: true, classes: s.classList, clientId: s.GoogleClientId || '', domain: s.domain, minAccuracy: s.minAcc };
+  return { ok: true, classes: s.classList, clientId: s.GoogleClientId || '', domain: s.domain, minAccuracy: s.minAcc, event: activeEvent_() };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Events (date ranges in Malaysia time)                              */
+/* ------------------------------------------------------------------ */
+
+function ymd_(v) {
+  if (v instanceof Date) return new Date(v.getTime() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+  var m = String(v || '').trim().match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);
+  return m ? m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) : '';
+}
+
+function activeEvent_(nowMs) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_EVENTS);
+  if (!sh) return null;
+  var today = ymd_(new Date(nowMs || Date.now()));
+  var rows = sh.getDataRange().getValues().slice(1);
+  for (var i = 0; i < rows.length; i++) {
+    var id = String(rows[i][0] || '').trim().toLowerCase();
+    var a = ymd_(rows[i][1]), b = ymd_(rows[i][2]);
+    if (EVENT_IDS.indexOf(id) !== -1 && a && b && a <= today && today <= b) return { id: id, end: b };
+  }
+  return null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -240,15 +282,34 @@ function rowToPlayer_(r) {
     owned: String(r[6] || 'starter').split(',').map(function (x) { return x.trim(); }).filter(String),
     selected: String(r[7] || 'starter'),
     gifts: String(r[9] || '').split(',').map(function (x) { return x.trim(); }).filter(String),
+    skins: String(r[10] || 'default').split(',').map(function (x) { return x.trim(); }).filter(String),
+    skin: String(r[11] || 'default'),
+    xp: Number(r[12]) || 0,
+    badges: String(r[13] || '').split(',').map(function (x) { return x.trim(); }).filter(String),
+    title: String(r[14] || ''),
+    stats: parseStats_(r[15]),
   };
+}
+
+function parseStats_(v) {
+  var s = {};
+  try { s = JSON.parse(String(v || '{}')) || {}; } catch (e) { s = {}; }
+  ['games', 'kills', 'bosses', 'bestCombo', 'bestWpm', 'perfect', 'revenge', 'eventGames', 'mpWins', 'streak', 'bestStreak', 'weekDays']
+    .forEach(function (k) { s[k] = Number(s[k]) || 0; });
+  s.days = Array.isArray(s.days) ? s.days.slice(-14) : [];
+  s.lastDay = String(s.lastDay || '');
+  return s;
 }
 
 // 送去网页的版本：不含内部栏位；管理员金币无限、全部机体可用
 function publicPlayer_(p, admin) {
   var out = { email: p.email, cls: p.cls, seat: p.seat, name: p.name, nickname: p.nickname,
-    coins: p.coins, owned: p.owned.slice(), selected: p.selected, admin: !!admin };
-  if (admin) { out.coins = ADMIN_COINS; out.owned = Object.keys(MECH_PRICES); }
+    coins: p.coins, owned: p.owned.slice(), selected: p.selected, admin: !!admin,
+    skins: (p.skins || ['default']).slice(), skin: p.skin || 'default', xp: p.xp || 0, level: levelFromXp_(p.xp || 0),
+    badges: (p.badges || []).slice(), title: p.title || '', stats: p.stats || parseStats_('') };
+  if (admin) { out.coins = ADMIN_COINS; out.owned = Object.keys(MECH_PRICES); out.skins = Object.keys(SKIN_PRICES); }
   if (out.owned.indexOf(out.selected) === -1) out.selected = 'starter';
+  if (out.skins.indexOf(out.skin) === -1) out.skin = 'default';
   return out;
 }
 
@@ -306,7 +367,8 @@ function findPlayer_(email) {
 function writePlayer_(row, p) {
   var sh = playersSheet_();
   var vals = [[p.email, p.cls, p.seat, p.name, p.nickname, p.coins, p.owned.join(','), p.selected, new Date(),
-    (p.gifts || []).join(',')]];
+    (p.gifts || []).join(','), (p.skins || ['default']).join(','), p.skin || 'default', p.xp || 0,
+    (p.badges || []).join(','), p.title || '', JSON.stringify(p.stats || {})]];
   if (row) sh.getRange(row, 1, 1, vals[0].length).setValues(vals);
   else sh.appendRow(vals[0]);
 }
@@ -335,7 +397,8 @@ function saveProfile_(body) {
     }
   }
   var found = findPlayer_(email);
-  var p = found ? found.data : { email: email, coins: 0, owned: ['starter'], selected: 'starter', gifts: [] };
+  var p = found ? found.data : { email: email, coins: 0, owned: ['starter'], selected: 'starter', gifts: [],
+    skins: ['default'], skin: 'default', xp: 0, badges: [], title: '', stats: parseStats_('') };
   p.cls = cls; p.seat = seat; p.name = name; p.nickname = nick;
   writePlayer_(found ? found.row : null, p);
   var gift = applyGifts_(findPlayer_(email));
@@ -375,6 +438,116 @@ function selectMech_(body) {
   return { ok: true, player: publicPlayer_(found.data, admin) };
 }
 
+function buySkin_(body) {
+  var email = checkToken_(body.token);
+  if (!email) return { ok: false, error: 'session_expired' };
+  var found = findPlayer_(email);
+  if (!found) return { ok: false, error: 'no_profile' };
+  var id = String(body.skin || '');
+  if (!(id in SKIN_PRICES)) return { ok: false, error: 'bad_skin' };
+  var p = found.data, admin = isAdmin_(email);
+  if (admin || p.skins.indexOf(id) !== -1) { p.skin = id; writePlayer_(found.row, p); return { ok: true, player: publicPlayer_(p, admin) }; }
+  if (p.coins < SKIN_PRICES[id]) return { ok: false, error: 'not_enough_coins', player: publicPlayer_(p, admin) };
+  p.coins -= SKIN_PRICES[id];
+  p.skins.push(id);
+  p.skin = id;
+  writePlayer_(found.row, p);
+  return { ok: true, player: publicPlayer_(p, admin) };
+}
+
+function selectSkin_(body) {
+  var email = checkToken_(body.token);
+  if (!email) return { ok: false, error: 'session_expired' };
+  var found = findPlayer_(email);
+  if (!found) return { ok: false, error: 'no_profile' };
+  var id = String(body.skin || ''), admin = isAdmin_(email);
+  if (!(id in SKIN_PRICES) || (!admin && found.data.skins.indexOf(id) === -1)) return { ok: false, error: 'not_owned', player: publicPlayer_(found.data, admin) };
+  found.data.skin = id;
+  writePlayer_(found.row, found.data);
+  return { ok: true, player: publicPlayer_(found.data, admin) };
+}
+
+function setTitle_(body) {
+  var email = checkToken_(body.token);
+  if (!email) return { ok: false, error: 'session_expired' };
+  var found = findPlayer_(email);
+  if (!found) return { ok: false, error: 'no_profile' };
+  var id = String(body.title || ''), admin = isAdmin_(email);
+  var allowed = id === '' || (badgeById_(id) && (admin || found.data.badges.indexOf(id) !== -1));
+  if (!allowed) return { ok: false, error: 'not_earned', player: publicPlayer_(found.data, admin) };
+  found.data.title = id;
+  writePlayer_(found.row, found.data);
+  CacheService.getScriptCache().remove('leaderboard');
+  return { ok: true, player: publicPlayer_(found.data, admin) };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Pilot level, badges & titles (same rules as js/progress.js)        */
+/* ------------------------------------------------------------------ */
+
+var BADGES = [
+  { id: 'rookie', test: function (s) { return s.games >= 1; } },
+  { id: 'ace', test: function (s) { return s.kills >= 100; } },
+  { id: 'veteran', test: function (s) { return s.kills >= 1000; } },
+  { id: 'legend', test: function (s) { return s.kills >= 5000; } },
+  { id: 'boss10', test: function (s) { return s.bosses >= 10; } },
+  { id: 'boss50', test: function (s) { return s.bosses >= 50; } },
+  { id: 'combo50', test: function (s) { return s.bestCombo >= 50; } },
+  { id: 'combo100', test: function (s) { return s.bestCombo >= 100; } },
+  { id: 'perfect', test: function (s) { return s.perfect >= 1; } },
+  { id: 'speed40', test: function (s) { return s.bestWpm >= 40; } },
+  { id: 'speed60', test: function (s) { return s.bestWpm >= 60; } },
+  { id: 'speed80', test: function (s) { return s.bestWpm >= 80; } },
+  { id: 'week5', test: function (s) { return s.weekDays >= 5; } },
+  { id: 'streak7', test: function (s) { return s.bestStreak >= 7; } },
+  { id: 'avenger', test: function (s) { return s.revenge >= 20; } },
+  { id: 'festival', test: function (s) { return s.eventGames >= 1; } },
+  { id: 'squad', test: function (s) { return s.mpWins >= 1; } },
+  { id: 'level10', test: function (s, lv) { return lv >= 10; } },
+  { id: 'level20', test: function (s, lv) { return lv >= 20; } },
+];
+function badgeById_(id) { for (var i = 0; i < BADGES.length; i++) if (BADGES[i].id === id) return BADGES[i]; return null; }
+
+// 升到 L+1 级需要累计 50 × L × (L+1) XP：Lv2=100, Lv3=300, Lv4=600, Lv5=1000 …（最高 50 级）
+function levelFromXp_(xp) { var L = 1; while (L < 50 && xp >= 50 * L * (L + 1)) L++; return L; }
+
+function xpForGame_(r) {
+  var kills = clamp_(Number(r.kills) || 0, 0, 2000), bosses = clamp_(Number(r.bosses) || 0, 0, 50);
+  var stage = clamp_(Number(r.stage) || 1, 1, 100), wpm = clamp_(Number(r.wpm) || 0, 0, 150), acc = clamp_(Number(r.accuracy) || 0, 0, 100);
+  return Math.min(3000, Math.round(kills * 5 + bosses * 50 + stage * 20 + wpm * acc / 100));
+}
+
+function applyProgress_(p, r, nowMs) {
+  var s = p.stats = p.stats || parseStats_('');
+  var before = levelFromXp_(p.xp || 0);
+  var acc = clamp_(Number(r.accuracy) || 0, 0, 100), wpm = clamp_(Number(r.wpm) || 0, 0, 250);
+  s.games += 1;
+  s.kills += clamp_(Number(r.kills) || 0, 0, 2000);
+  s.bosses += clamp_(Number(r.bosses) || 0, 0, 50);
+  s.bestCombo = Math.max(s.bestCombo, clamp_(Number(r.maxCombo) || 0, 0, 2000));
+  if (acc >= 80) s.bestWpm = Math.max(s.bestWpm, Math.round(wpm * 10) / 10);
+  if (acc >= 100 && (Number(r.keys) || 0) >= 30) s.perfect += 1;
+  s.revenge += clamp_(Number(r.revengeKills) || 0, 0, 100);
+  if (r.event) s.eventGames += 1;
+  if (r.mode === 'Multi' && Number(r.mpRank) === 1 && Number(r.mpPlayers) >= 2) s.mpWins += 1;
+  var now = nowMs || Date.now(), today = ymd_(new Date(now)), yesterday = ymd_(new Date(now - 86400000));
+  if (s.days.indexOf(today) === -1) {
+    s.streak = s.lastDay === yesterday ? s.streak + 1 : 1;
+    s.days.push(today); s.days = s.days.slice(-14);
+  }
+  s.lastDay = today;
+  s.bestStreak = Math.max(s.bestStreak, s.streak);
+  var weekStart = ymd_(new Date(weekStartMs_(now)));
+  s.weekDays = s.days.filter(function (d) { return d >= weekStart; }).length;
+  var gain = xpForGame_(r);
+  p.xp = (p.xp || 0) + gain;
+  var level = levelFromXp_(p.xp);
+  var fresh = [];
+  p.badges = p.badges || [];
+  BADGES.forEach(function (b) { if (p.badges.indexOf(b.id) === -1 && b.test(s, level)) { p.badges.push(b.id); fresh.push(b.id); } });
+  return { xpGain: gain, levelBefore: before, level: level, newBadges: fresh };
+}
+
 /* ------------------------------------------------------------------ */
 /*  Scores                                                             */
 /* ------------------------------------------------------------------ */
@@ -400,17 +573,20 @@ function submitScore_(body) {
   sh.appendRow([new Date(), p.cls, p.seat, p.name, p.nickname, email, diff,
     String(r.wordBank || '').slice(0, 40), Math.round(wpm * 10) / 10, Math.round(acc * 10) / 10, survival,
     Math.max(0, Math.round(Number(r.score) || 0)), Math.max(1, Math.round(Number(r.stage) || 1)),
-    mistakes, String(r.mech || '').slice(0, 20), r.mode === 'Multi' ? 'Multi' : 'Solo']);
+    mistakes, String(r.mech || '').slice(0, 20), r.mode === 'Multi' ? 'Multi' : 'Solo',
+    clamp_(Math.round(Number(r.kills) || 0), 0, 2000), clamp_(Math.round(Number(r.maxCombo) || 0), 0, 2000)]);
 
   // 金币：设上限，防止有人改网页乱加钱
-  var maxCoins = (Number(r.kills) || 0) * 12 + (Number(r.bosses) || 0) * 250;
-  var earned = clamp_(Math.round(Number(r.coins) || 0), 0, Math.min(maxCoins, 5000));
+  var maxCoins = (Number(r.kills) || 0) * 25 + (Number(r.bosses) || 0) * 400;
+  var earned = clamp_(Math.round(Number(r.coins) || 0), 0, Math.min(maxCoins, 8000));
   p.coins += earned;
+  r.event = r.event && activeEvent_() ? r.event : '';
+  var progress = applyProgress_(p, r);
   writePlayer_(found.row, p);
   var gift = applyGifts_(found);
   CacheService.getScriptCache().remove('leaderboard');
   var admin = isAdmin_(email);
-  return { ok: true, player: publicPlayer_(p, admin), admin: admin, coinsAdded: earned, gift: gift };
+  return { ok: true, player: publicPlayer_(p, admin), admin: admin, coinsAdded: earned, gift: gift, progress: progress };
 }
 
 function clamp_(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
@@ -429,7 +605,7 @@ function readScores_() {
       email: String(r[5]).toLowerCase(), difficulty: String(r[6]), wordBank: String(r[7]),
       wpm: Number(r[8]) || 0, acc: Number(r[9]) || 0, survival: Number(r[10]) || 0,
       score: Number(r[11]) || 0, stage: Number(r[12]) || 0, mistyped: String(r[13] || ''),
-      mode: String(r[15] || 'Solo'),
+      mode: String(r[15] || 'Solo'), kills: Number(r[16]) || 0, maxCombo: Number(r[17]) || 0,
     });
   }
   return out;
@@ -447,9 +623,9 @@ function playerMap_() {
 /*  Leaderboard (only nicknames are sent out)                          */
 /* ------------------------------------------------------------------ */
 
-function weekStartMs_() {
+function weekStartMs_(nowMs) {
   var offset = 8 * 3600 * 1000; // Malaysia UTC+8
-  var local = new Date(Date.now() + offset);
+  var local = new Date((nowMs || Date.now()) + offset);
   var dow = (local.getUTCDay() + 6) % 7; // Monday = 0
   return Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() - dow) - offset;
 }
@@ -464,7 +640,8 @@ function getLeaderboard_() {
   // 排行榜只算单人模式、不算管理员
   var scores = readScores_().filter(function (r) { return r.acc >= s.minAcc && r.mode !== 'Multi' && !admins[r.email]; });
   var weekStart = weekStartMs_();
-  var out = { ok: true, minAccuracy: s.minAcc, weekStart: weekStart, boards: {} };
+  var out = { ok: true, minAccuracy: s.minAcc, weekStart: weekStart, boards: {},
+    classBattle: classBattle_(readScores_().filter(function (r) { return !admins[r.email] && r.cls !== STAFF_CLASS; }), weekStart, s.classList) };
   ['Easy', 'Normal', 'Hard'].forEach(function (d) {
     var rows = scores.filter(function (r) { return r.difficulty === d; });
     out.boards[d] = {
@@ -487,8 +664,27 @@ function topTen_(rows, players) {
     .slice(0, 10)
     .map(function (r) {
       var p = players[r.email];
-      return { nickname: (p && p.nickname) || r.nickname || 'Pilot', wpm: r.wpm, acc: r.acc, time: r.time };
+      return { nickname: (p && p.nickname) || r.nickname || 'Pilot', title: (p && p.title) || '', level: p ? levelFromXp_(p.xp) : 1,
+        wpm: r.wpm, acc: r.acc, time: r.time };
     });
+}
+
+// 班级对抗赛：本周每班击坠总数（单人+多人都算）；也回传上周冠军
+function classBattle_(rows, weekStart, classList) {
+  function tally(from, to) {
+    var t = {};
+    rows.forEach(function (r) {
+      if (r.time < from || r.time >= to) return;
+      var c = t[r.cls] = t[r.cls] || { cls: r.cls, kills: 0, games: 0, pilots: {} };
+      c.kills += r.kills; c.games += 1; c.pilots[r.email] = 1;
+    });
+    return Object.keys(t).map(function (k) { var c = t[k]; return { cls: c.cls, kills: c.kills, games: c.games, pilots: Object.keys(c.pilots).length }; })
+      .sort(function (a, b) { return b.kills - a.kills || b.pilots - a.pilots; });
+  }
+  var week = tally(weekStart, Infinity);
+  classList.forEach(function (c) { if (!week.some(function (w) { return w.cls === c; })) week.push({ cls: c, kills: 0, games: 0, pilots: 0 }); });
+  var last = tally(weekStart - 7 * 86400000, weekStart);
+  return { week: week, lastChampion: last.length && last[0].kills > 0 ? last[0] : null };
 }
 
 /* ------------------------------------------------------------------ */
