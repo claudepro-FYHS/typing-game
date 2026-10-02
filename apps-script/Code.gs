@@ -27,13 +27,14 @@ var PLAYER_HEADERS = ['Email', 'Class', 'Seat No', 'Name', 'Nickname', 'Coins', 
   'Stats (auto — do not edit)'];
 var ADMIN_HEADERS = ['Email', 'Unlimited coins (YES / NO)', 'Note'];
 var GIFT_HEADERS = ['Who: email / class (e.g. 2B) / ALL', 'Coins', 'Note', 'Gift ID (auto — do not edit)'];
-var EVENT_HEADERS = ['Event: midautumn / cny / anniversary', 'Start (YYYY-MM-DD)', 'End (YYYY-MM-DD)', 'Note'];
+// 节日大部分由网页自动计算（js/calendar.js，农历日期已填到 2030 年）。
+// 这张表只需要：校庆日期，以及 2031 年以后的农历节日日期。
+var EVENT_HEADERS = ['Event ID (see README)', 'Start (YYYY-MM-DD)', 'End (YYYY-MM-DD)', 'Note'];
 var DEFAULT_EVENTS = [
-  ['midautumn', '2026-09-18', '2026-10-04', '中秋节 Mid-Autumn Festival'],
-  ['cny', '2027-01-30', '2027-02-20', '农历新年 Chinese New Year'],
-  ['anniversary', '', '', '校庆：请填上日期 School anniversary — fill in the dates'],
+  ['anniversary', '', '', '校庆：请填上开始和结束日期 School anniversary — fill in the dates'],
 ];
-var EVENT_IDS = ['midautumn', 'cny', 'anniversary'];
+var EVENT_IDS = ['cny', 'lantern', 'qingming', 'dragonboat', 'qixi', 'midautumn', 'doubleninth', 'solstice',
+  'newyear', 'valentine', 'aprilfools', 'easter', 'mothersday', 'fathersday', 'halloween', 'christmas', 'merdeka', 'anniversary'];
 
 var DEFAULT_SETTINGS = [
   ['Classes', '1A, 1B, 1C, 2A, 2B, 2C, 3A, 3B, 3C', '班级列表，用逗号分隔。例如：1A, 1B, 2A'],
@@ -41,6 +42,7 @@ var DEFAULT_SETTINGS = [
   ['GoogleClientId', '', 'Google Cloud 的 Client ID（xxx.apps.googleusercontent.com）'],
   ['SchoolDomain', 'foonyew.edu.my', '学校邮箱域名'],
   ['LeaderboardMinAccuracy', '80', '准确率达到多少 % 才能上排行榜'],
+  ['DisabledEvents', '', '不想要的节日活动，用逗号分隔。例如：halloween, aprilfools（ID 见 README）'],
 ];
 
 // 机体价钱（要和网页 index.html 里的 MECHS 一致）
@@ -81,6 +83,15 @@ function setup() {
   if (!ss.getSheetByName(SHEET_EVENTS)) {
     var ev = ensureSheet_(ss, SHEET_EVENTS, EVENT_HEADERS);
     DEFAULT_EVENTS.forEach(function (row) { ev.appendRow(row); });
+  } else {
+    // 旧版本预设的中秋 / 新年行已经由网页自动计算，删掉以免日期冲突
+    var es = ss.getSheetByName(SHEET_EVENTS);
+    es.getRange(1, 1, 1, EVENT_HEADERS.length).setValues([EVENT_HEADERS]).setFontWeight('bold');
+    var evRows = es.getDataRange().getValues();
+    for (var i = evRows.length - 1; i >= 1; i--) {
+      var note = String(evRows[i][3] || '');
+      if (note === '中秋节 Mid-Autumn Festival' || note === '农历新年 Chinese New Year') es.deleteRow(i + 1);
+    }
   }
   var bw = ss.getSheetByName(SHEET_BANNED);
   if (!bw) {
@@ -131,6 +142,7 @@ function getSettings_() {
   out.classList = String(out.Classes || '').split(/[,，、;\s]+/).map(function (s) { return s.trim(); }).filter(String);
   out.minAcc = Number(out.LeaderboardMinAccuracy) || 0;
   out.domain = (out.SchoolDomain || 'foonyew.edu.my').toLowerCase();
+  out.disabledEvents = String(out.DisabledEvents || '').toLowerCase().split(/[,，、;\s]+/).filter(String);
   return out;
 }
 
@@ -187,7 +199,8 @@ function withLock_(fn) {
 
 function getPublicConfig_() {
   var s = getSettings_();
-  return { ok: true, classes: s.classList, clientId: s.GoogleClientId || '', domain: s.domain, minAccuracy: s.minAcc, event: activeEvent_() };
+  return { ok: true, classes: s.classList, clientId: s.GoogleClientId || '', domain: s.domain, minAccuracy: s.minAcc,
+    eventWindows: eventWindows_(), disabledEvents: s.disabledEvents };
 }
 
 /* ------------------------------------------------------------------ */
@@ -200,17 +213,17 @@ function ymd_(v) {
   return m ? m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) : '';
 }
 
-function activeEvent_(nowMs) {
+// Extra event dates typed in the Events sheet (school anniversary, lunar festivals after 2030).
+// The web page merges these with its built-in festival calendar.
+function eventWindows_() {
   var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_EVENTS);
-  if (!sh) return null;
-  var today = ymd_(new Date(nowMs || Date.now()));
-  var rows = sh.getDataRange().getValues().slice(1);
-  for (var i = 0; i < rows.length; i++) {
-    var id = String(rows[i][0] || '').trim().toLowerCase();
-    var a = ymd_(rows[i][1]), b = ymd_(rows[i][2]);
-    if (EVENT_IDS.indexOf(id) !== -1 && a && b && a <= today && today <= b) return { id: id, end: b };
-  }
-  return null;
+  if (!sh) return [];
+  var out = [];
+  sh.getDataRange().getValues().slice(1).forEach(function (r) {
+    var id = String(r[0] || '').trim().toLowerCase(), a = ymd_(r[1]), b = ymd_(r[2]);
+    if (EVENT_IDS.indexOf(id) !== -1 && a && b && a <= b) out.push({ id: id, start: a, end: b });
+  });
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -580,7 +593,8 @@ function submitScore_(body) {
   var maxCoins = (Number(r.kills) || 0) * 25 + (Number(r.bosses) || 0) * 400;
   var earned = clamp_(Math.round(Number(r.coins) || 0), 0, Math.min(maxCoins, 8000));
   p.coins += earned;
-  r.event = r.event && activeEvent_() ? r.event : '';
+  var evId = String(r.event || '').toLowerCase();
+  r.event = EVENT_IDS.indexOf(evId) !== -1 && getSettings_().disabledEvents.indexOf(evId) === -1 ? evId : '';
   var progress = applyProgress_(p, r);
   writePlayer_(found.row, p);
   var gift = applyGifts_(found);
