@@ -165,7 +165,7 @@ function floater(x, y, text, color) {
 /* =====================================================================
  *  BATTLEFIELDS (unlocked by level) + FESTIVAL DECORATIONS
  * ===================================================================== */
-let envGroup = null, envId = null, envEvent = null, envRocks = [], envLanterns = [], fireworkT = 0;
+let envGroup = null, envId = null, envEvent = null, envRocks = [], envLanterns = [], envSnow = null, envDecor = {}, fireworkT = 0;
 function radialTexture(inner, outer) {
   const c = document.createElement("canvas"); c.width = c.height = 128;
   const x = c.getContext("2d"), g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
@@ -177,7 +177,7 @@ function setEnvironment(id, eventId) {
   if (envId === id && envEvent === (eventId || null)) return;
   envId = id; envEvent = eventId || null;
   if (envGroup) scene.remove(envGroup);
-  envGroup = new THREE.Group(); envRocks = []; envLanterns = [];
+  envGroup = new THREE.Group(); envRocks = []; envLanterns = []; envSnow = null; envDecor = {};
   scene.add(envGroup);
   planet.visible = ring.visible = id === "deep" || id === "asteroid";
   scene.fog.color.set(0x0a0b1e);
@@ -222,9 +222,12 @@ function setEnvironment(id, eventId) {
       envGroup.add(sp);
     }
   }
-  // festival decorations
-  if (eventId === "midautumn" || eventId === "cny") {
-    const colors = eventId === "cny" ? [0xff2a2a, 0xff3b1f] : [0xff7a2a, 0xffb43a, 0xff4a3a];
+  // festival decorations (see EVENTS[...].decor in js/progress.js)
+  const decor = eventId && typeof EVENTS !== "undefined" && EVENTS[eventId] ? EVENTS[eventId].decor || {} : {};
+  envDecor = decor;
+  if (decor.sky) setSky(decor.sky[0], decor.sky[1], decor.sky[2]);
+  if (decor.lanterns) {
+    const colors = decor.lanterns;
     for (let i = 0; i < 18; i++) {
       const l = new THREE.Group();
       l.add(new THREE.Mesh(new THREE.SphereGeometry(1.4, 12, 10), MODELS.GLOW(colors[i % colors.length], 0.85)));
@@ -235,13 +238,46 @@ function setEnvironment(id, eventId) {
       l.userData.ph = Math.random() * 6;
       envGroup.add(l); envLanterns.push(l);
     }
-    if (eventId === "midautumn") {
-      const moon = new THREE.Mesh(new THREE.SphereGeometry(30, 32, 24), new THREE.MeshBasicMaterial({ color: 0xfff1b8, fog: false }));
-      moon.position.set(110, 90, -400); envGroup.add(moon);
-      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: radialTexture("rgba(255,240,180,.6)", "rgba(0,0,0,0)"), transparent: true, depthWrite: false, fog: false }));
-      halo.position.copy(moon.position); halo.scale.setScalar(160); envGroup.add(halo);
+  }
+  if (decor.moon) {
+    const moon = new THREE.Mesh(new THREE.SphereGeometry(30, 32, 24), new THREE.MeshBasicMaterial({ color: 0xfff1b8, fog: false }));
+    moon.position.set(110, 90, -400); envGroup.add(moon);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: radialTexture("rgba(255,240,180,.6)", "rgba(0,0,0,0)"), transparent: true, depthWrite: false, fog: false }));
+    halo.position.copy(moon.position); halo.scale.setScalar(160); envGroup.add(halo);
+  }
+  if (decor.sprites) {
+    for (let i = 0; i < 22; i++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: emojiTexture(decor.sprites[i % decor.sprites.length]), transparent: true, depthWrite: false, fog: false }));
+      sp.position.set((Math.random() < 0.5 ? -1 : 1) * (14 + Math.random() * 45), 4 + Math.random() * 30, -15 - Math.random() * 170);
+      sp.scale.setScalar(3 + Math.random() * 3);
+      sp.userData.ph = Math.random() * 6;
+      envGroup.add(sp); envLanterns.push(sp);
     }
   }
+  if (decor.snow) {
+    const n = S.prefs.quality === "high" ? 900 : 350, pos = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { pos[i * 3] = (Math.random() - 0.5) * 160; pos[i * 3 + 1] = Math.random() * 70 - 10; pos[i * 3 + 2] = -Math.random() * 160 + 15; }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    envSnow = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.6, map: dotTexture(), transparent: true, opacity: 0.9, depthWrite: false, fog: false }));
+    envGroup.add(envSnow);
+  }
+}
+const emojiCache = {};
+let dotTex = null;
+function dotTexture() { // soft round dot (snowflakes)
+  if (dotTex) return dotTex;
+  const c = document.createElement("canvas"); c.width = c.height = 32;
+  const x = c.getContext("2d"), g = x.createRadialGradient(16, 16, 0, 16, 16, 16);
+  g.addColorStop(0, "rgba(255,255,255,1)"); g.addColorStop(0.5, "rgba(255,255,255,0.8)"); g.addColorStop(1, "rgba(255,255,255,0)");
+  x.fillStyle = g; x.fillRect(0, 0, 32, 32);
+  return (dotTex = new THREE.CanvasTexture(c));
+}
+function emojiTexture(ch) {
+  if (emojiCache[ch]) return emojiCache[ch];
+  const c = document.createElement("canvas"); c.width = c.height = 128;
+  const x = c.getContext("2d"); x.textAlign = "center"; x.textBaseline = "middle";
+  x.font = '96px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif'; x.fillText(ch, 64, 70);
+  return (emojiCache[ch] = new THREE.CanvasTexture(c));
 }
 function updateEnvironment(dt, speed) {
   if (!envGroup) return;
@@ -251,12 +287,17 @@ function updateEnvironment(dt, speed) {
     r.rotation.x += r.userData.rs.x * dt; r.rotation.y += r.userData.rs.y * dt;
   }
   const t = performance.now() / 1000;
-  for (const l of envLanterns) { l.position.y += Math.sin(t + l.userData.ph) * 0.01; l.rotation.y += dt * 0.3; }
-  if (envEvent === "cny" || envEvent === "anniversary") {
+  for (const l of envLanterns) { l.position.y += Math.sin(t + l.userData.ph) * 0.01; if (!l.isSprite) l.rotation.y += dt * 0.3; }
+  if (envSnow) {
+    const a = envSnow.geometry.attributes.position;
+    for (let i = 0; i < a.count; i++) { a.array[i * 3 + 1] -= dt * (3 + (i % 5)); a.array[i * 3] += Math.sin(t + i) * dt * 0.6; if (a.array[i * 3 + 1] < -12) a.array[i * 3 + 1] += 72; }
+    a.needsUpdate = true;
+  }
+  if (envDecor.fireworks) {
     fireworkT -= dt;
     if (fireworkT <= 0) {
       fireworkT = 0.6 + Math.random() * 1.2;
-      const cols = envEvent === "cny" ? [0xff3333, 0xffcc33, 0xff8833] : [0x3ad0ff, 0xffcc33, 0xff5ef0, 0x7dff8a];
+      const cols = envDecor.fireworks;
       explode(new V3((Math.random() - 0.5) * 160, 25 + Math.random() * 40, -120 - Math.random() * 120), cols[Math.floor(Math.random() * cols.length)], 90, 1.6, 22);
     }
   }

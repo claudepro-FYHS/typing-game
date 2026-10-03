@@ -781,6 +781,133 @@ const BOSSES = [
   { name: "CENTENNIAL TITAN", kind: "Festival Boss", event: "anniversary", yaw: 0, humanoid: true, build(P) {
     return giantMech({ id: "titan", head: "vfin", finSize: 1.4, pack: "mantis", weapon: "magnum", bulk: 1.3, shoulder: "big",
       colors: { main: 0xf4f1e6, accent: 0xd8a830, trim: 0x1f4fbf, fin: 0xf6c10e, visor: 0x7dffb0, dark: 0x3a3424 } }, P); } },
+  { name: "LANTERN TITAN", kind: "Festival Boss", event: "lantern", yaw: 0, build(P) {
+    const g = new T.Group(), gold = MS(0xd8a830, { metalness: 0.7, roughness: 0.3 }), red = GLOW(0xff3a2a, 0.9);
+    const body = cyl(2.6, 2.6, 4.4, red, 0, 0, 0, g, 16); body.scale.set(1, 1, 1);
+    for (const y of [-2.4, 2.4]) cyl(2.9, 2.9, 0.5, gold, 0, y, 0, g, 16);
+    for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; box(0.12, 4.4, 0.12, gold, Math.cos(a) * 2.65, 0, Math.sin(a) * 2.65, g); }
+    box(2.2, 0.35, 0.2, MB(0xffee88), 0, 0.4, 2.65, g);
+    for (let i = 0; i < 6; i++) { const t = cyl(0.08, 0.08, 1.8, gold, (i - 2.5) * 0.7, -3.6, 0, g, 6); P.arms.push({ o: t, s: i % 2 ? 1 : -1, walk: true }); }
+    const orbit = jnt("orbit", g, 0, 0, 0); P.orbit = orbit;
+    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2, l = jnt("lan", orbit, Math.cos(a) * 6, Math.sin(i * 2) * 1.5, Math.sin(a) * 6); cyl(0.6, 0.6, 1.0, GLOW([0xffb43a, 0xff6ad5, 0x6ad5ff][i % 3], 0.9), 0, 0, 0, l, 10); }
+    P.cores.push(sph(0.6, MB(0xffee88), 0, 3.4, 0, g, 10));
+    return g; } },
+  { name: "DRAGON BOAT DREADNOUGHT", kind: "Festival Boss", event: "dragonboat", yaw: -1.0, build(P) {
+    const g = new T.Group(), wood = MS(0x8a5a2b), red = MS(0xc2181f), gold = MS(0xe0b03a, { metalness: 0.7 }), green = MS(0x2f8f4a);
+    box(2.6, 1.2, 12, wood, 0, 0, 0, g); box(2.8, 0.25, 12.2, red, 0, 0.6, 0, g);
+    const head = jnt("spin", g, 0, 1.6, 6.6); P.spinners.push({ o: head, axis: "x", amp: 0.12, speed: 2 });
+    box(1.4, 1.6, 2.0, green, 0, 0, 0, head); box(1.0, 0.5, 1.2, gold, 0, -0.5, 1.0, head);
+    for (const s2 of [-1, 1]) { rot(cone(0.15, 1.4, gold, 0.4 * s2, 1.1, -0.3, head, 6), -0.5, 0, s2 * 0.3); sph(0.18, MB(0xffee55), 0.5 * s2, 0.3, 1.0, head, 8); }
+    rot(cone(0.6, 2.4, green, 0, 1.2, -7.2, g, 8), -0.6, 0, 0);
+    cyl(0.9, 0.9, 1.0, red, 0, 1.2, 0, g, 14);
+    P.oars = [];
+    for (const s2 of [-1, 1]) for (let i = 0; i < 6; i++) { const o = jnt("oar", g, 1.5 * s2, 0.4, -4.5 + i * 1.7); rot(box(0.12, 0.12, 2.6, wood, 1.1 * s2, -0.6, 0, o), 0, s2 * 1.4, s2 * -0.5); P.oars.push({ o, i, s: s2 }); }
+    return g; } },
+  { name: "MAGPIE BRIDGE", kind: "Festival Boss", event: "qixi", yaw: 0, build(P) {
+    const g = new T.Group(), black = MS(0x1c1f2a), white = MS(0xf2f4f8), blue = MS(0x2d62d6);
+    P.wave = [];
+    for (let i = 0; i < 11; i++) {
+      const a = (i / 10) * Math.PI, seg = jnt("seg", g, Math.cos(a) * -7.5, Math.sin(a) * 5.5 - 2, 0);
+      sph(0.85, black, 0, 0, 0, seg, 10).scale.set(1.4, 0.9, 1);
+      sph(0.5, white, 0, -0.35, 0.45, seg, 8);
+      for (const s2 of [-1, 1]) { const w = box(0.5, 0.14, 2.6, i % 2 ? white : blue, 0, 0.35, s2 * 1.4, seg); w.rotation.x = s2 * 0.35; }
+      box(1.3, 0.12, 0.5, blue, -1.4, 0.1, 0, seg);
+      P.wave.push({ o: seg, i, keepX: true });
+    }
+    for (let i = 0; i < 40; i++) { const a = Math.random() * Math.PI; sph(0.12 + Math.random() * 0.12, GLOW(0xcfe6ff, 0.9), Math.cos(a) * -7.5 + (Math.random() - 0.5) * 2, Math.sin(a) * 5.5 - 2 + (Math.random() - 0.5) * 2, -1.5 - Math.random() * 2, g, 4); }
+    P.cores.push(sph(1.2, GLOW(0x6ad5ff, 0.95), -8.8, -2, 0, g, 12)); P.cores.push(sph(1.2, GLOW(0xff6ad5, 0.95), 8.8, -2, 0, g, 12));
+    return g; } },
+  { name: "MOUNTAIN FORTRESS", kind: "Festival Boss", event: "doubleninth", yaw: 0, build(P) {
+    const g = new T.Group(), rock = MS(0x6b6f5a), snow = MS(0xf4f6fa), red = MS(0xa8222c), gold = MS(0xe0b03a);
+    cone(4.5, 7, rock, 0, 0, 0, g, 9); cone(1.8, 2.6, snow, 0, 2.3, 0, g, 9);
+    const pag = jnt("spin", g, 0, 4.2, 0); P.spinners.push({ o: pag, axis: "y", speed: 0.5 });
+    for (let i = 0; i < 3; i++) { box(1.4 - i * 0.3, 0.6, 1.4 - i * 0.3, red, 0, i * 0.8, 0, pag); cone(1.3 - i * 0.3, 0.4, gold, 0, i * 0.8 + 0.45, 0, pag, 4); }
+    for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; for (let k = 0; k < 5; k++) sph(0.22, MS(0xf2c21a), Math.cos(a) * 3.6 + Math.cos(k) * 0.3, -2.6 + Math.sin(k) * 0.3, Math.sin(a) * 3.6, g, 6); }
+    turret(g, P, rock, -2.2, -1.0, 2.6); turret(g, P, rock, 2.2, -1.0, 2.6);
+    return g; } },
+  { name: "TANGYUAN TITAN", kind: "Festival Boss", event: "solstice", yaw: 0, build(P) {
+    const g = new T.Group(), pink = MS(0xffc2d6), white = MS(0xf7f7fb), green = MS(0xb6e3a8), bowl = MS(0x3d6fb8);
+    const b = sph(4, bowl, 0, -2.6, 0, g, 18); b.scale.set(1.2, 0.55, 1.2);
+    const balls = [[0, 0.2, 0, 2.0, white], [0, 3.2, 0, 1.5, pink], [0, 5.5, 0, 1.0, green]];
+    balls.forEach(([x, y, z, r, m], i) => { const o = jnt("seg", g, x, y, z); sph(r, m, 0, 0, 0, o, 14); P.wave = P.wave || []; P.wave.push({ o, i, bob: true }); });
+    for (const s2 of [-1, 1]) { const arm = jnt("arm", g, 2.0 * s2, 0.8, 0); for (let i = 0; i < 4; i++) sph(0.4, i % 2 ? pink : white, s2 * (0.6 + i * 0.7), 0, 0, arm, 8); P.arms.push({ o: arm, s: s2 }); }
+    for (const s2 of [-1, 1]) sph(0.18, MB(0x111111), 0.5 * s2, 3.5, 1.35, g, 6);
+    P.cores.push(sph(0.5, GLOW(0xffffff, 0.4), 0, 7, 0, g, 10));
+    return g; } },
+  { name: "COUNTDOWN TOWER", kind: "Festival Boss", event: "newyear", yaw: 0, build(P) {
+    const g = new T.Group(), stone = MS(0x4a4f63), gold = MS(0xe0b03a, { metalness: 0.7 }), face = MB(0xf4f6fa);
+    box(3.6, 10, 3.6, stone, 0, 0, 0, g); cone(2.8, 3, gold, 0, 6.5, 0, g, 4);
+    add(new T.Mesh(G("clockface", () => new T.CircleGeometry(1.5, 32)), face), 0, 3, 1.82, g);
+    const hr = jnt("spin", g, 0, 3, 1.9); box(0.15, 0.9, 0.06, MB(0x111111), 0, 0.45, 0, hr); P.spinners.push({ o: hr, axis: "z", speed: -0.6 });
+    const mn = jnt("spin", g, 0, 3, 1.95); box(0.1, 1.3, 0.06, MB(0xd62a2a), 0, 0.65, 0, mn); P.spinners.push({ o: mn, axis: "z", speed: -4 });
+    for (const s2 of [-1, 1]) { const l = jnt("arm", g, 2.6 * s2, -2, 0); rot(cyl(0.4, 0.5, 3, gold, 0, 1.2, 0, l, 10), 0, 0, -s2 * 0.4); P.arms.push({ o: l, s: s2 }); P.cores.push(sph(0.4, GLOW(0xff5ef0, 0.9), 2.6 * s2 + s2 * 0.6, 0.3, 0, g, 8)); }
+    return g; } },
+  { name: "HEART SERAPH", kind: "Festival Boss", event: "valentine", yaw: 0, build(P) {
+    const g = new T.Group(), pink = MS(0xff5c8a, { emissive: 0x6a0020, emissiveIntensity: 0.5 }), white = MS(0xffffff);
+    sph(1.9, pink, -1.2, 0.8, 0, g, 16); sph(1.9, pink, 1.2, 0.8, 0, g, 16); rot(cone(2.6, 3.6, pink, 0, -1.6, 0, g, 16), Math.PI, 0, 0);
+    P.cores.push(sph(0.8, GLOW(0xffd1e3, 0.9), 0, 0.4, 1.7, g, 12));
+    for (const s2 of [-1, 1]) for (let pair = 0; pair < 2; pair++) { const w = featherWing(g, { }, s2, pair, 5, 2.4, white, MS(0xffb3c9)); w.position.set(2.6 * s2, 0.6 - pair * 0.6, -0.5); P.arms.push({ o: w, s: s2, walk: true }); }
+    const orbit = jnt("orbit", g, 0, 0, 0); P.orbit = orbit;
+    for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; sph(0.35, GLOW(0xff6a9a, 0.9), Math.cos(a) * 5.5, Math.sin(i) * 1.5, Math.sin(a) * 5.5, orbit, 8); }
+    return g; } },
+  { name: "PRANK JESTER", kind: "Festival Boss", event: "aprilfools", yaw: 0, build(P) {
+    const g = new T.Group(), face = MS(0xf7e3c4), red = MS(0xd62a2a), blue = MS(0x2d62d6), yellow = MS(0xf6c10e);
+    sph(2.6, face, 0, 0, 0, g, 16);
+    for (const s2 of [-1, 1]) { sph(0.45, MB(0x111111), 0.9 * s2, 0.7, 2.3, g, 8); sph(0.5, red, 0, -0.2, 2.6, g, 10); }
+    const grin = tor(1.2, 0.18, MB(0xd62a2a), 0, -0.9, 2.2, g); grin.rotation.z = Math.PI; grin.scale.set(1, 0.6, 1);
+    const hat = jnt("spin", g, 0, 2.2, 0); P.spinners.push({ o: hat, axis: "z", amp: 0.25, speed: 3 });
+    [[-1, red], [0, blue], [1, yellow]].forEach(([k, m]) => { const c = rot(cone(0.8, 3, m, k * 1.4, 1.2, 0, hat, 8), 0, 0, -k * 0.6); sph(0.35, yellow, k * 2.4, 2.4 - Math.abs(k) * 0.4, 0, hat, 8); });
+    const tie = jnt("spin", g, 0, -2.7, 0.8); P.spinners.push({ o: tie, axis: "z", speed: 4 });
+    for (const s2 of [-1, 1]) rot(cone(0.5, 1.2, blue, 0.6 * s2, 0, 0, tie, 4), 0, 0, s2 * Math.PI / 2);
+    for (const s2 of [-1, 1]) { const arm = jnt("arm", g, 2.6 * s2, -0.6, 0); for (let i = 0; i < 6; i++) tor(0.35, 0.08, yellow, s2 * (0.3 + i * 0.35), 0, 0, arm).rotation.y = Math.PI / 2; sph(0.5, MS(0xffffff), s2 * 2.5, 0, 0, arm, 8); P.arms.push({ o: arm, s: s2 }); }
+    return g; } },
+  { name: "EGG MOTHERSHIP", kind: "Festival Boss", event: "easter", yaw: 0, build(P) {
+    const g = new T.Group(), egg = MS(0xbfe3ff), pink = MS(0xffb3d1), yellow = MS(0xfff09a), white = MS(0xf7f7fb), orange = MS(0xff8a2a);
+    const e = sph(3.2, egg, 0, 0, 0, g, 20); e.scale.y = 1.3;
+    [[-1.4, pink], [0.2, yellow], [1.8, pink]].forEach(([y, m]) => { const r = tor(3.05 * Math.sqrt(1 - (y / 4.2) ** 2), 0.25, m, 0, y, 0, g); r.rotation.x = Math.PI / 2; });
+    for (const s2 of [-1, 1]) { const ear = jnt("arm", g, 0.9 * s2, 3.8, 0); box(0.8, 3.0, 0.4, white, 0, 1.5, 0, ear); box(0.45, 2.4, 0.42, pink, 0, 1.5, 0.02, ear); P.arms.push({ o: ear, s: s2, walk: true }); }
+    for (const s2 of [-1, 1]) { const c = jnt("turret", g, 3.2 * s2, -0.5, 1); rot(cone(0.5, 2.2, orange, 0, 0, 1, c, 8), Math.PI / 2, 0, 0); P.turrets.push(c); }
+    P.cores.push(sph(0.6, GLOW(0xfff09a, 0.9), 0, 0.6, 3.2, g, 10));
+    return g; } },
+  { name: "GUARDIAN GODDESS", kind: "Festival Boss", event: "mothersday", yaw: 0, humanoid: true, build(P) {
+    return giantMech({ id: "goddess", head: "vfin", finSize: 1.2, pack: "seraph", weapon: "magnum", bulk: 1.2, shoulder: "round",
+      colors: { main: 0xfbeef4, accent: 0xff8ab3, trim: 0xd8a830, fin: 0xf6c10e, visor: 0x7dffb0, dark: 0x6a4a5a } }, P); } },
+  { name: "IRON GUARDIAN", kind: "Festival Boss", event: "fathersday", yaw: 0, humanoid: true, build(P) {
+    return giantMech({ id: "ironguard", head: "vfin", finSize: 0.9, pack: "sazabi", weapon: "magnum", shield: "rx", bulk: 1.35, shoulder: "big",
+      colors: { main: 0x2c3a5a, accent: 0x9aa6b8, trim: 0xd8a830, fin: 0xd8a830, visor: 0x3ad0ff, dark: 0x161c2a } }, P); } },
+  { name: "PUMPKIN PHANTOM", kind: "Festival Boss", event: "halloween", yaw: 0, build(P) {
+    const g = new T.Group(), orange = MS(0xff7a1a), stem = MS(0x3f6b2a), glow = MB(0xffd23c);
+    for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; const r = sph(2.0, orange, Math.cos(a) * 1.4, 0, Math.sin(a) * 1.4, g, 12); r.scale.set(0.9, 1.25, 0.9); }
+    cyl(0.3, 0.5, 1.4, stem, 0, 2.9, 0, g, 8);
+    for (const s2 of [-1, 1]) rot(cone(0.55, 0.9, glow, 0.9 * s2, 0.8, 3.15, g, 3), Math.PI / 2, 0, 0);
+    box(2.2, 0.5, 0.2, glow, 0, -0.7, 3.2, g); P.cores.push(sph(0.6, GLOW(0xffaa22, 0.6), 0, 0, 2.6, g, 10));
+    const orbit = jnt("orbit", g, 0, 0, 0); P.orbit = orbit;
+    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2, gh = jnt("gh", orbit, Math.cos(a) * 6, Math.sin(i * 1.7) * 2, Math.sin(a) * 6); sph(0.7, MS(0xf4f4f8, { transparent: true, opacity: 0.8 }), 0, 0.3, 0, gh, 10); rot(cone(0.7, 1.2, MS(0xf4f4f8, { transparent: true, opacity: 0.8 }), 0, -0.6, 0, gh, 10), Math.PI, 0, 0); for (const s2 of [-1, 1]) sph(0.12, MB(0x111111), 0.25 * s2, 0.45, 0.6, gh, 6); }
+    return g; } },
+  { name: "TANNENBAUM TITAN", kind: "Festival Boss", event: "christmas", yaw: 0, build(P) {
+    const g = new T.Group(), green = MS(0x1f7a3a), trunk = MS(0x6b4423), gold = MB(0xffd54a);
+    cyl(0.8, 1.0, 1.6, trunk, 0, -4.6, 0, g, 10);
+    [[-2.6, 4.2], [-0.4, 3.4], [1.6, 2.5], [3.4, 1.6]].forEach(([y, r]) => cone(r, 3, green, 0, y, 0, g, 10));
+    const star = add(new T.Mesh(G("star", () => new T.OctahedronGeometry(0.9)), gold), 0, 5.6, 0, g); P.spinners.push({ o: star, axis: "y", speed: 2 });
+    const cols = [0xff3344, 0x3ad0ff, 0xffd54a, 0xff5ef0, 0x7dff8a];
+    for (let i = 0; i < 22; i++) { const y = -3.5 + Math.random() * 8, r = Math.max(0.6, 4.3 - (y + 3.5) * 0.45) * 0.9, a = Math.random() * Math.PI * 2; P.cores.push(sph(0.25, GLOW(cols[i % 5], 0.95), Math.cos(a) * r, y, Math.sin(a) * r, g, 8)); }
+    for (const s2 of [-1, 1]) { const gift = jnt("turret", g, 3.2 * s2, -4.4, 1); box(1.4, 1.2, 1.4, MS(s2 > 0 ? 0xd62a2a : 0x2d62d6), 0, 0, 0, gift); box(1.45, 0.25, 0.25, gold, 0, 0.1, 0, gift); P.turrets.push(gift); }
+    return g; } },
+  { name: "HORNBILL GUARDIAN", kind: "Festival Boss", event: "merdeka", yaw: 0, build(P) {
+    const g = new T.Group(), black = MS(0x1c1f26), white = MS(0xf4f6fa), yellow = MS(0xf6c10e), red = MS(0xd62a2a), blue = MS(0x1f3fa8);
+    const body = sph(2.4, black, 0, 0, 0, g, 16); body.scale.set(1, 0.9, 1.5);
+    const head = jnt("spin", g, 0, 1.8, 2.6); P.spinners.push({ o: head, axis: "x", amp: 0.1, speed: 1.6 });
+    sph(1.0, black, 0, 0, 0, head, 12);
+    rot(cone(0.55, 3.2, yellow, 0, -0.3, 2.0, head, 10), Math.PI / 2 + 0.25, 0, 0);
+    rot(cone(0.5, 2.0, red, 0, 0.6, 1.2, head, 10), Math.PI / 2 - 0.35, 0, 0);
+    for (const s2 of [-1, 1]) sph(0.15, MB(0xff3344), 0.6 * s2, 0.2, 0.7, head, 6);
+    for (const s2 of [-1, 1]) {
+      const wing = jnt("arm", g, 2.0 * s2, 0.5, 0); P.arms.push({ o: wing, s: s2, walk: true });
+      for (let i = 0; i < 4; i++) box(4.5 - i * 0.6, 0.18, 1.0, [black, white, blue, red][i], s2 * (2.2 - i * 0.1), 0, -0.9 + i * 0.6, wing);
+    }
+    box(1.6, 0.25, 3.0, white, 0, -0.3, -3.6, g);
+    P.cores.push(sph(0.5, GLOW(0xffdd33, 0.9), 0, -0.4, 3.2, g, 10));
+    return g; } },
 ];
 const BOSS_SIZE = 18;
 function buildBoss(idx) {
@@ -816,7 +943,12 @@ function animateBoss(holder, dt, time, attack, target) {
   }
   for (const c of P.cores) c.scale.setScalar(1 + Math.sin(time * 6) * 0.12 + attack * 0.6);
   if (P.orbit) P.orbit.rotation[P.orbitAxis || "y"] += dt * 0.6;
-  if (P.wave) for (const w of P.wave) { w.o.position.y = Math.sin(time * 2.2 - w.i * 0.55) * 1.4; w.o.position.z = -w.i * 0.35 + Math.cos(time * 1.6 - w.i * 0.5) * 0.8; }
+  if (P.wave) for (const w of P.wave) {
+    if (w.bob) { w.o.position.y += Math.sin(time * 2 + w.i) * 0.01; continue; }
+    if (w.keepX) { w.o.rotation.z = Math.sin(time * 3 + w.i) * 0.25; continue; }
+    w.o.position.y = Math.sin(time * 2.2 - w.i * 0.55) * 1.4; w.o.position.z = -w.i * 0.35 + Math.cos(time * 1.6 - w.i * 0.5) * 0.8;
+  }
+  if (P.oars) for (const o of P.oars) { o.o.rotation.x = Math.sin(time * 4 + o.i * 0.4) * 0.5; o.o.rotation.y = Math.cos(time * 4 + o.i * 0.4) * 0.3 * o.s; }
   if (P.mech) {
     if (target) aimMech(P.mech, P.anim, target);
     if (attack > 0.9 && P.anim.recoil < 0.2) fireMech(P.anim, true);

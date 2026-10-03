@@ -295,6 +295,9 @@ function onFx(ev) {
   } else if (ev.kind === "bomb") {
     if (p.pid === G.myPid) { const f = $("#flash"); f.style.background = "rgba(255,255,255,.7)"; f.classList.add("on"); setTimeout(() => { f.classList.remove("on"); setTimeout(() => f.style.background = "", 400); }, 80); }
     sfx("buster");
+  } else if (ev.kind === "fool") {
+    floater(window.innerWidth / 2, window.innerHeight * 0.3, "🤡 APRIL FOOL! That one is coming back!", "#ffcc33");
+    sfx("steal");
   } else sfx("item");
 }
 
@@ -338,15 +341,15 @@ function pickVictim() {
   return v;
 }
 
-function spawnEnemy() {
+function spawnEnemy(forceWord, forceType) {
   const v = pickVictim(); if (!v) return;
   const d = G.diff, r = Math.random();
-  const size = r < d.drone ? "short" : r < d.drone + d.heavy ? "long" : "mid";
+  const size = forceType ? MODELS.ENEMY_TYPES[forceType].size : r < d.drone ? "short" : r < d.drone + d.heavy ? "long" : "mid";
   const types = MODELS.ENEMY_SIZES[size];
-  const type = types[Math.floor(Math.random() * types.length)];
-  let word = drawWord(size), elite = false;
+  const type = forceType || types[Math.floor(Math.random() * types.length)];
+  let word = forceWord || drawWord(size), elite = false;
   const rv = Object.keys(G.revenge || {}).filter(w => !G.targets.some(t => t.word === w || t.word[0] === w[0]));
-  if (G.mode === "solo" && rv.length && Math.random() < 0.3) { word = rv[Math.floor(Math.random() * rv.length)]; elite = true; }
+  if (!forceWord && G.mode === "solo" && rv.length && Math.random() < 0.3) { word = rv[Math.floor(Math.random() * rv.length)]; elite = true; }
   const n = nPlayers();
   const range = Math.min(40, Math.max(13, camera.aspect * 24)) * (n > 1 ? 1.3 : 1);
   let x = 0;
@@ -399,6 +402,12 @@ function resolveKill(id, pid, combo, how) {
   } else coins = 1;
   emit({ e: "kill", id, by: pid, pts, coins, drop, how });
   if (drop) emitPState(p);
+  // April Fools: sometimes a destroyed enemy "comes back to life" (points already counted)
+  if (G.event === "aprilfools" && how === "type" && t.kind === "enemy" && !t.elite && Math.random() < 0.15 &&
+      !G.targets.some(o => o.alive && o !== t && o.word[0] === t.word[0])) {
+    emit({ e: "fx", pid, kind: "fool" });
+    spawnEnemy(t.word, t.type);
+  }
   return true;
 }
 

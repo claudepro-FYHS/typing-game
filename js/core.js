@@ -135,7 +135,8 @@ async function loadRemoteConfig() {
       S.remote.clientId = c.clientId || "";
       S.remote.minAccuracy = c.minAccuracy;
       S.remote.loaded = true;
-      S.remote.event = c.event || null;
+      S.remote.eventWindows = Array.isArray(c.eventWindows) ? c.eventWindows : [];
+      S.remote.disabledEvents = Array.isArray(c.disabledEvents) ? c.disabledEvents : [];
       addEventBank();
       renderEventBanners();
       if (S.currentScreen === "scr-hangar") { renderBankSelect(); renderPilot(); }
@@ -297,7 +298,7 @@ function renderEventBanners() {
   for (const id of ["#login-event", "#hangar-event"]) {
     const el = $(id); if (!el) continue;
     el.classList.toggle("show", !!ev);
-    if (ev) el.innerHTML = `${ev.icon} <b>${esc(ev.name)} event!</b> Special boss <b>${esc(ev.boss)}</b>, festival word bank and <b>coins ×${ev.bonus}</b> until ${esc(ev.end)}.`;
+    if (ev) el.innerHTML = `${ev.icon} <b>${esc(ev.name)} event!</b> ${ev.boss ? `Special boss <b>${esc(ev.boss)}</b>, ` : ""}festival word bank and <b>coins ×${ev.bonus}</b> until ${esc(ev.end)}.`;
   }
 }
 function renderPilot() {

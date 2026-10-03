@@ -119,7 +119,8 @@ Everything is changed in the Google Sheet. **You don't need to touch GitHub.** C
 | Set up admins | **Admins** tab → email in column A, `YES` in column B (see below) |
 | Give coins to students | **CoinGifts** tab (see below) |
 | Change one student's coins directly | **Players** tab → edit the `Coins` cell |
-| Festival event dates | **Events** tab (see below) |
+| Turn a festival off | **Settings** tab → `DisabledEvents` (see below) |
+| School anniversary dates | **Events** tab (see below) |
 
 ### Admins (Admins tab)
 
@@ -143,19 +144,50 @@ Each row is one gift:
 - Each student receives each gift only once. Next time they open the game they'll see "🎁 Your teacher sent you … coins!".
 - A negative number in column B takes coins away (never below 0).
 
-### Festival events (Events tab)
+### Festival events (automatic)
 
-Three built-in festival events: `midautumn` (Mid-Autumn Festival), `cny` (Chinese New Year) and `anniversary` (school anniversary).
+The game has **18 festival events** and switches them on by itself — you don't need to type any dates.
 
-| Column A: event | Column B: start | Column C: end | Column D: note |
+| Festival | ID | When (Malaysia time) | Festival boss |
 |---|---|---|---|
-| `midautumn` | 2026-09-18 | 2026-10-04 | |
-| `cny` | 2027-01-30 | 2027-02-20 | |
-| `anniversary` | *(fill in)* | *(fill in)* | |
+| 🧧 Chinese New Year | `cny` | **all of January and February** | Golden Dragon |
+| 🏮 Lantern Festival (元宵) | `lantern` | 15th day of the 1st lunar month, ±7 days | Lantern Titan |
+| 🌿 Qingming (清明) | `qingming` | about 4–5 April, ±7 days | *(no special boss — normal bosses)* |
+| 🐉 Dragon Boat (端午) | `dragonboat` | 5th day of the 5th lunar month, ±7 days | Dragon Boat Dreadnought |
+| 🌌 Qixi (七夕) | `qixi` | 7th day of the 7th lunar month, ±7 days | Magpie Bridge |
+| 🥮 Mid-Autumn (中秋) | `midautumn` | 15th day of the 8th lunar month, ±7 days | Jade Rabbit Moon |
+| ⛰️ Double Ninth (重阳) | `doubleninth` | 9th day of the 9th lunar month, ±7 days | Mountain Fortress |
+| 🍡 Winter Solstice (冬至) | `solstice` | about 21–22 December, ±7 days | Tangyuan Titan |
+| 🎆 New Year's Day | `newyear` | 1 January, ±7 days | Countdown Tower |
+| 💝 Valentine's Day | `valentine` | 14 February, ±7 days | Heart Seraph |
+| 🤡 April Fools' Day | `aprilfools` | 1 April, ±7 days | Prank Jester |
+| 🥚 Easter | `easter` | Easter Sunday, ±7 days | Egg Mothership |
+| 💐 Mother's Day | `mothersday` | 2nd Sunday of May, ±7 days | Guardian Goddess |
+| 👔 Father's Day | `fathersday` | 3rd Sunday of June, ±7 days | Iron Guardian |
+| 🎃 Halloween | `halloween` | 31 October, ±7 days | Pumpkin Phantom |
+| 🎄 Christmas | `christmas` | 25 December, ±7 days | Tannenbaum Titan |
+| 🌺 Merdeka Day | `merdeka` | 31 August, ±7 days | Hornbill Guardian |
+| 🎓 School anniversary | `anniversary` | **you type the dates** in the Events tab | Centennial Titan |
 
-- Dates are in Malaysia time, written as `YYYY-MM-DD`. Change them every year.
-- During an event the game shows a banner and adds a festival word bank. Stages 1, 3, 5 … bring the festival boss (Jade Rabbit Moon / Golden Dragon / Centennial Titan), lanterns or fireworks fill the sky, and **coins are ×1.5**.
+- Every festival lasts from **one week before to one week after** its day (Chinese New Year: the whole of January and February).
+- **When two festivals overlap**: the festival whose day is *today* wins; otherwise the **shorter** event wins (so Valentine's Day and the Lantern Festival show up even inside the Chinese New Year months).
+- Western festivals and Merdeka repeat every year by themselves. Lunar festival dates are built in for **2026–2030**. From 2031, add rows to the **Events** tab (see below), or ask someone to extend the table in `js/calendar.js`.
+- During an event: a banner appears, a **festival word bank** is added to the word bank list, stages 1, 3, 5 … bring the festival boss, the sky gets festival decorations (lanterns, fireworks, snow, pumpkins …), and **coins are ×1.5**.
+- The festival word bank contains **only festival words** (about 60 per festival, all with Chinese meanings). Students who choose another word bank still get the boss, decorations and ×1.5 coins.
+- April Fools' special: sometimes a destroyed enemy "comes back to life" with an 🤡 APRIL FOOL! message (you still keep the points).
 - Playing during an event earns the **🏮 Festival Hero** badge.
+
+**Turning a festival off:** in the **Settings** tab, put the IDs in `DisabledEvents`, separated by commas — for example `halloween, aprilfools`. Leave it blank to keep all festivals on.
+
+**Events tab** (only for extra dates):
+
+| Column A: event ID | Column B: start | Column C: end | Column D: note |
+|---|---|---|---|
+| `anniversary` | 2026-11-01 | 2026-11-07 | School anniversary |
+| `midautumn` | 2031-09-24 | 2031-10-08 | (example: a lunar festival after 2030) |
+
+- Dates are in Malaysia time, written as `YYYY-MM-DD`.
+- The school anniversary only runs when you fill in its dates here. Update them every year.
 
 ### Adding words (words.js)
 

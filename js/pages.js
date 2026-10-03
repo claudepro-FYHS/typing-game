@@ -178,7 +178,8 @@ function frame(now) {
  *  BOOT
  * ===================================================================== */
 applyQuality();
-setEnvironment("deep", null);
+addEventBank();
+setEnvironment("deep", activeEvent() ? activeEvent().id : null);
 setPreviewMech((wallet() && wallet().selected) || "starter", profile().skin);
 goPlayHome();
 requestAnimationFrame(frame);
