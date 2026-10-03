@@ -26,7 +26,7 @@ A 3D English typing game for Foon Yew High School (Malaysia). Students sign in w
 | `js/core.js` | Global state `S`, storage, API calls (`api()`), Google sign-in, profile, hangar (mech shop, paint shop, mission setup), `loadRemoteConfig`. |
 | `js/calendar.js` | Festival dates and `pickEvent(today, extraWindows, disabledIds)`. Also loadable in Node (`module.exports`). |
 | `js/progress.js` | Client copy of the levels/XP/badges/titles rules (for guests), SKINS, BACKGROUNDS, EVENTS (18 festivals: words, boss, decor), `activeEvent()`, `addEventBank()`. |
-| `js/scene.js` | Renderer, camera, starfield, battlefields (`setEnvironment(id, eventId)`), festival decorations, particles, music synth (`Music`), hangar preview. |
+| `js/scene.js` | Renderer, camera, starfield, battlefields (`setEnvironment(id, eventId)`), festival decorations, particles, music synth (`Music` plays the original march in `SONG`: one token per eighth note), hangar preview. Sound effects are `sfx()` in core.js. Music must stay original: never copy a copyrighted melody. |
 | `js/game.js` | The game engine (see below), HUD, items, specials, combo tiers, boss slow-mo, revenge words, results screen, share card, score upload. |
 | `js/net.js` | Multiplayer lobby and PeerJS (WebRTC) host/guest. |
 | `js/pages.js` | Leaderboard, teacher dashboard, main frame loop, boot. Exposes `window.__MST` for tests. |
@@ -99,6 +99,7 @@ node run.js e2e-festivals gallery   # just some of them
 | `e2e-multiplayer-3p.js` | Invite link, wrong room code, 3 players, one player leaving, fair target split, score rows |
 | `e2e-festivals.js` | Banner, festival bank and boss on 8 fake dates; April Fools respawn |
 | `gallery.js` | Screenshots of every mech (idle and aiming), enemy and boss |
+| `audio-preview.js` | Renders the music and sound effects to `shots/*.wav` (OfflineAudioContext) and fails if anything clips |
 
 ## Making a new game from this one
 

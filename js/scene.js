@@ -304,18 +304,48 @@ function updateEnvironment(dt, speed) {
 }
 
 /* =====================================================================
- *  BACKGROUND MUSIC (tiny synth loop; speeds up with your combo)
+ *  BACKGROUND MUSIC — an original heroic anime-style march (synthesised,
+ *  no audio files): fanfare intro, verse and chorus, then verse + chorus loop.
+ *  Brass-like lead, octave-jumping bass, chord stabs and a march beat.
+ *  It speeds up a little with your combo.
  * ===================================================================== */
+const SONG = (() => {
+  // one token per eighth note: a note name (e.g. "G4", "F#5"), "-" holds the note before, "." is a rest
+  const intro = [
+    ["G", "D5 D5 G5 - - - F#5 E5"], ["G", "D5 - B4 - G4 - - -"], ["C", "C5 C5 E5 - D5 C5 B4 C5"], ["D", "D5 - - - - - - ."],
+  ];
+  const verse = [
+    ["G", "G4 - B4 D5 - D5 E5 D5"], ["Em", "B4 - G4 - E4 - - -"], ["C", "E4 G4 C5 - C5 B4 C5 E5"], ["D", "D5 - - - A4 - - ."],
+    ["G", "G4 - B4 D5 - D5 G5 F#5"], ["Em", "E5 - B4 - G4 - B4 -"], ["Am", "A4 C5 E5 - D5 C5 B4 A4"], ["D", "A4 - - - - - . ."],
+  ];
+  const chorus = [
+    ["C", "G5 - - E5 - C5 E5 G5"], ["D", "F#5 - - D5 - A4 D5 F#5"], ["Bm", "F#5 - D5 - B4 - D5 E5"], ["Em", "E5 - - - B4 - E5 G5"],
+    ["C", "G5 - - E5 - G5 A5 G5"], ["D", "F#5 - - D5 - F#5 A5 F#5"], ["G", "G5 - - - D5 - B4 -"], ["G", "G5 - - - - - . .", "fill"],
+  ];
+  const CH = { G: [43, [0, 4, 7]], Em: [40, [0, 3, 7]], C: [36, [0, 4, 7]], D: [38, [0, 4, 7]], Am: [45, [0, 3, 7]], Bm: [47, [0, 3, 7]] };
+  const NOTE = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  const midi = (n) => { const m = n.match(/^([A-G])(#?)(\d)$/); return 12 * (Number(m[3]) + 1) + NOTE[m[1]] + (m[2] ? 1 : 0); };
+  const bars = (list) => list.map(([chord, mel, fill]) => {
+    const tok = mel.split(" "), notes = [];
+    tok.forEach((x, i) => {
+      if (x === "-" || x === ".") return;
+      let len = 1; while (tok[i + len] === "-") len++;
+      notes.push({ step: i, midi: midi(x), len });
+    });
+    return { root: CH[chord][0], tri: CH[chord][1], notes, fill: !!fill };
+  });
+  return { intro: bars(intro), loop: bars(verse).concat(bars(chorus)) };
+})();
+
 const Music = {
   on: false, timer: null, step: 0, nextT: 0, tempo: 1, gain: null,
   start() {
     this.stop();
     if (!S.prefs.music || !S.prefs.sound) return;
     try {
-      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-      actx = actx || new AC(); if (actx.state === "suspended") actx.resume();
-      if (!noiseBuf) { noiseBuf = actx.createBuffer(1, actx.sampleRate * 0.6, actx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
-      this.gain = actx.createGain(); this.gain.gain.value = 0.05; this.gain.connect(actx.destination);
+      if (!audioCtx()) return;
+      const comp = actx.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 3; comp.connect(actx.destination);
+      this.gain = actx.createGain(); this.gain.gain.value = 0.1; this.gain.connect(comp);
       this.on = true; this.step = 0; this.tempo = 1; this.nextT = actx.currentTime + 0.15;
       this.timer = setInterval(() => this.tick(), 60);
     } catch (e) {}
@@ -324,25 +354,51 @@ const Music = {
     this.on = false; if (this.timer) clearInterval(this.timer); this.timer = null;
     if (this.gain) { try { this.gain.gain.setTargetAtTime(0, actx.currentTime, 0.2); } catch (e) {} this.gain = null; }
   },
-  setTier(tier) { this.tempo = [1, 1.08, 1.16, 1.25, 1.36][tier] || 1; },
+  setTier(tier) { this.tempo = [1, 1.04, 1.08, 1.12, 1.16][tier] || 1; },
   tick() {
     if (!this.on || !actx) return;
-    const eighth = 60 / (116 * this.tempo) / 2;
+    const eighth = 60 / (148 * this.tempo) / 2;
     while (this.nextT < actx.currentTime + 0.25) { this.note(this.step, this.nextT, eighth); this.nextT += eighth; this.step++; }
   },
+  bar(i) { return i < SONG.intro.length ? SONG.intro[i] : SONG.loop[(i - SONG.intro.length) % SONG.loop.length]; },
   note(step, t, len) {
-    const roots = [57, 53, 48, 55], quality = [[0, 3, 7, 12], [0, 4, 7, 12], [0, 4, 7, 12], [0, 4, 7, 11]];
-    const bar = Math.floor(step / 8) % 4, root = roots[bar], q = quality[bar];
+    const b = this.bar(Math.floor(step / 8)), s = step % 8, out = this.gain;
     const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
-    const play = (freq, dur, vol, type) => {
-      const o = actx.createOscillator(), g = actx.createGain();
-      o.type = type; o.frequency.setValueAtTime(freq, t);
-      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(g); g.connect(this.gain); o.start(t); o.stop(t + dur + 0.02);
+    const osc = (type, freq, start, dur, vol, o = {}) => {
+      const v = actx.createOscillator(), g = actx.createGain(), f = actx.createBiquadFilter();
+      v.type = type; v.frequency.setValueAtTime(freq, start); v.detune.value = o.detune || 0;
+      f.type = "lowpass"; f.frequency.setValueAtTime(o.cut || 6000, start); f.Q.value = o.q || 0.7;
+      if (o.cutEnd) f.frequency.exponentialRampToValueAtTime(o.cutEnd, start + dur);
+      g.gain.setValueAtTime(0.0001, start);
+      g.gain.exponentialRampToValueAtTime(vol, start + (o.att || 0.01));
+      g.gain.setTargetAtTime(vol * (o.sus == null ? 0.7 : o.sus), start + (o.att || 0.01), 0.08);
+      g.gain.setTargetAtTime(0.0001, start + dur, 0.04);
+      v.connect(f); f.connect(g); g.connect(out); v.start(start); v.stop(start + dur + 0.25);
     };
-    if (step % 2 === 0) play(hz(root - 12), len * 1.8, 0.9, "square");
-    play(hz(root + 12 + q[[0, 1, 2, 3, 2, 1, 2, 3][step % 8]]), len * 0.9, 0.35, "triangle");
-    if (step % 4 === 0) { const o = actx.createOscillator(), g = actx.createGain(); o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.15); g.gain.setValueAtTime(1.2, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.18); o.connect(g); g.connect(this.gain); o.start(t); o.stop(t + 0.2); }
-    if (step % 2 === 1 && noiseBuf) { const s = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain(); s.buffer = noiseBuf; f.type = "highpass"; f.frequency.value = 7000; g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.05); s.connect(f); f.connect(g); g.connect(this.gain); s.start(t); s.stop(t + 0.06); }
+    const drum = (kind) => {
+      if (kind === "kick") { const v = actx.createOscillator(), g = actx.createGain(); v.frequency.setValueAtTime(140, t); v.frequency.exponentialRampToValueAtTime(42, t + 0.14); g.gain.setValueAtTime(1.1, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.2); v.connect(g); g.connect(out); v.start(t); v.stop(t + 0.22); return; }
+      const src = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain(); src.buffer = noiseBuf;
+      const snare = kind === "snare";
+      f.type = snare ? "bandpass" : "highpass"; f.frequency.value = snare ? 1800 : 7500; f.Q.value = snare ? 0.9 : 0.7;
+      const v = snare ? 0.55 : (kind === "open" ? 0.18 : 0.12), d = snare ? 0.16 : (kind === "open" ? 0.12 : 0.04);
+      g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.001, t + d);
+      src.connect(f); f.connect(g); g.connect(out); src.start(t); src.stop(t + d + 0.02);
+    };
+    // brass lead: two detuned saws with a bright attack
+    for (const n of b.notes) if (n.step === s) {
+      const dur = n.len * len * 0.95;
+      osc("sawtooth", hz(n.midi), t, dur, 0.32, { cut: 2800, cutEnd: 1400, q: 1.5, att: 0.02 });
+      osc("sawtooth", hz(n.midi), t, dur, 0.22, { detune: 9, cut: 2800, cutEnd: 1400, q: 1.5, att: 0.02 });
+      osc("square", hz(n.midi - 12), t, dur, 0.06, { cut: 1200 });
+    }
+    // bass: root, octave, root, octave …
+    osc("sawtooth", hz(b.root + (s % 2 ? 12 : 0)), t, len * 0.85, 0.55, { cut: 700, q: 2, sus: 0.5 });
+    // chord stabs on the off-beats
+    if (s % 2 === 1) for (const iv of b.tri) osc("square", hz(b.root + 24 + iv), t, len * 0.5, 0.07, { cut: 2200, sus: 0.3 });
+    // march beat (and a snare roll at the end of the chorus)
+    if (s === 0 || s === 4) drum("kick");
+    if (s === 2 || s === 6) drum("snare");
+    if (b.fill && s >= 4) { drum("snare"); }
+    drum(s === 7 ? "open" : "hat");
   },
 };

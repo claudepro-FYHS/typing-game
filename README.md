@@ -262,7 +262,7 @@ The game has **18 festival events** and switches them on by itself — you don't
 - **Revenge enemies:** words you mistyped come back in your next solo game as golden ⭐ enemies worth **double points and coins**. Destroy one and that word leaves your revenge list.
 - **Chinese meanings:** when a word is destroyed, its Chinese meaning pops up (switch it off with the **中文** button in the hangar). Mistyped words on the results screen show their meanings too.
 - **Share card:** the results screen has **📸 SHARE CARD**, which makes a picture with your mech, WPM, accuracy, combo, level and title that students can save and share.
-- **Background music:** a small built-in soundtrack (switch it off with the **MUSIC** button).
+- **Background music:** an original heroic anime-style march made by the game itself (no music files), with beam-rifle sound effects. Switch it off with the **MUSIC** button.
 
 ### Multiplayer (2–4 players)
 

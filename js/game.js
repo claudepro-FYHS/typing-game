@@ -183,6 +183,7 @@ function shootFx(p, t, big) {
   MODELS.fireMech(p.anim, big);
   p.aimAt = t; p.aimT = 1.2;
   beam(muzzlePos(p), targetPoint(t), big ? (p.pid === G.myPid ? 0xffe066 : 0xff9ad5) : 0x6fe8ff, big ? 0.18 : 0.05, big ? 0.22 : 0.08);
+  if (big) sfx("beam");
 }
 
 function explodeTarget(t) {
