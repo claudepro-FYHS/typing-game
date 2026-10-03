@@ -24,7 +24,7 @@ var SCORE_HEADERS = ['Time', 'Class', 'Seat No', 'Name', 'Nickname', 'Email', 'D
   'WPM', 'Accuracy (%)', 'Survival (s)', 'Score', 'Stage', 'Mistyped Words', 'Mech', 'Mode', 'Kills', 'Max Combo'];
 var PLAYER_HEADERS = ['Email', 'Class', 'Seat No', 'Name', 'Nickname', 'Coins', 'Owned Mechs',
   'Selected Mech', 'Last Updated', 'Gifts Received (auto)', 'Owned Skins', 'Selected Skin', 'XP', 'Badges', 'Title',
-  'Stats (auto — do not edit)'];
+  'Stats (auto — do not edit)', 'Class Year (auto)'];
 var ADMIN_HEADERS = ['Email', 'Unlimited coins (YES / NO)', 'Note'];
 var GIFT_HEADERS = ['Who: email / class (e.g. 2B) / ALL', 'Coins', 'Note', 'Gift ID (auto — do not edit)'];
 // 节日大部分由网页自动计算（js/calendar.js，农历日期已填到 2030 年）。
@@ -37,7 +37,10 @@ var EVENT_IDS = ['cny', 'lantern', 'qingming', 'dragonboat', 'qixi', 'midautumn'
   'newyear', 'valentine', 'aprilfools', 'easter', 'mothersday', 'fathersday', 'halloween', 'christmas', 'merdeka', 'anniversary'];
 
 var DEFAULT_SETTINGS = [
-  ['Classes', '1A, 1B, 1C, 2A, 2B, 2C, 3A, 3B, 3C', '班级列表，用逗号分隔。例如：1A, 1B, 2A'],
+  ['ClassCounts', 'J1:12, J2:12, J3:12, S1AC:4, S1S:6, S2AC:4, S2S:6, S3AC:4, S3S:6', '每个年段有几班（请改成学校真实的班数）。学生先选年段再选班号，班级会存成 J105、S2AC3 这样的格式'],
+  ['SchoolYear', '', '学年。留空 = 自动用今年年份：每年 1 月 1 日起，学生登入时要重新选班级和座号（金币、机体、等级都保留）'],
+  ['AllowOtherAccounts', 'YES', 'YES = 校外的 Google 账号也可以登入、上排行榜（不列入班级对抗和老师后台的班级统计）；NO = 只限学校账号'],
+  ['Classes', '', '（旧设定）只有 ClassCounts 留空时才会用这个班级列表，用逗号分隔'],
   ['TeacherPassword', 'change-me-2026', '老师后台密码（请务必改掉）'],
   ['GoogleClientId', '', 'Google Cloud 的 Client ID（xxx.apps.googleusercontent.com）'],
   ['SchoolDomain', 'foonyew.edu.my', '学校邮箱域名'],
@@ -54,6 +57,7 @@ var MECH_PRICES = {
 var SKIN_PRICES = { 'default': 0, desert: 300, arctic: 300, sakura: 400, blackops: 400, neon: 600, gold: 800, optical: 1000 };
 var ADMIN_COINS = 999999;
 var STAFF_CLASS = 'STAFF';
+var OTHER_CLASS = 'OTHER'; // 校外 Google 账号
 
 var TOKEN_HOURS = 12;
 var TZ = 'Asia/Kuala_Lumpur';
@@ -139,12 +143,39 @@ function getSettings_() {
   if (!st) { setup(); st = ss.getSheetByName(SHEET_SETTINGS); }
   var out = {};
   st.getDataRange().getValues().forEach(function (r) { out[String(r[0]).trim()] = String(r[1]).trim(); });
-  out.classList = String(out.Classes || '').split(/[,，、;\s]+/).map(function (s) { return s.trim(); }).filter(String);
+  out.grades = parseClassCounts_(out.ClassCounts);
+  out.classList = out.grades.length ? classListFromGrades_(out.grades)
+    : String(out.Classes || '').split(/[,，、;\s]+/).map(function (s) { return s.trim(); }).filter(String);
+  out.schoolYear = /^\d{4}$/.test(String(out.SchoolYear || '')) ? String(out.SchoolYear) : ymd_(new Date()).slice(0, 4);
+  out.allowOthers = String(out.AllowOtherAccounts || 'YES').trim().toUpperCase() !== 'NO';
   out.minAcc = Number(out.LeaderboardMinAccuracy) || 0;
   out.domain = (out.SchoolDomain || 'foonyew.edu.my').toLowerCase();
   out.disabledEvents = String(out.DisabledEvents || '').toLowerCase().split(/[,，、;\s]+/).filter(String);
   return out;
 }
+
+// "J1:12, S2AC:4" -> [{ grade: 'J1', count: 12 }, { grade: 'S2AC', count: 4 }]
+function parseClassCounts_(v) {
+  var out = [];
+  String(v || '').split(/[,，、;\n]+/).forEach(function (part) {
+    var m = part.trim().match(/^([A-Za-z0-9]+)\s*[:：=]\s*(\d{1,2})$/);
+    if (m && Number(m[2]) > 0) out.push({ grade: m[1].toUpperCase(), count: Number(m[2]) });
+  });
+  return out;
+}
+
+// 初中班号补 0（J105），高中不补（S2AC3）
+function classCode_(grade, n) {
+  return grade + (grade.charAt(0) === 'J' && n < 10 ? '0' + n : String(n));
+}
+
+function classListFromGrades_(grades) {
+  var list = [];
+  grades.forEach(function (g) { for (var n = 1; n <= g.count; n++) list.push(classCode_(g.grade, n)); });
+  return list;
+}
+
+function isSchoolEmail_(email, s) { return String(email).toLowerCase().split('@')[1] === s.domain; }
 
 /* ------------------------------------------------------------------ */
 /*  HTTP entry points                                                  */
@@ -199,7 +230,8 @@ function withLock_(fn) {
 
 function getPublicConfig_() {
   var s = getSettings_();
-  return { ok: true, classes: s.classList, clientId: s.GoogleClientId || '', domain: s.domain, minAccuracy: s.minAcc,
+  return { ok: true, classes: s.classList, grades: s.grades, schoolYear: s.schoolYear, allowOthers: s.allowOthers,
+    clientId: s.GoogleClientId || '', domain: s.domain, minAccuracy: s.minAcc,
     eventWindows: eventWindows_(), disabledEvents: s.disabledEvents };
 }
 
@@ -240,7 +272,7 @@ function login_(body) {
   if (info.aud !== s.GoogleClientId) return { ok: false, error: 'bad_token' };
   if (String(info.email_verified) !== 'true') return { ok: false, error: 'bad_token' };
   var email = String(info.email || '').toLowerCase();
-  if (email.split('@')[1] !== s.domain) return { ok: false, error: 'not_school', email: email };
+  if (email.split('@')[1] !== s.domain && !s.allowOthers) return { ok: false, error: 'not_school', email: email };
   var result = withLock_(function () { return refreshPlayer_(email); });
   result.token = makeToken_(email);
   result.email = email;
@@ -301,6 +333,7 @@ function rowToPlayer_(r) {
     badges: String(r[13] || '').split(',').map(function (x) { return x.trim(); }).filter(String),
     title: String(r[14] || ''),
     stats: parseStats_(r[15]),
+    classYear: String(r[16] || ''),
   };
 }
 
@@ -316,7 +349,10 @@ function parseStats_(v) {
 
 // 送去网页的版本：不含内部栏位；管理员金币无限、全部机体可用
 function publicPlayer_(p, admin) {
-  var out = { email: p.email, cls: p.cls, seat: p.seat, name: p.name, nickname: p.nickname,
+  var s = getSettings_(), school = isSchoolEmail_(p.email, s);
+  // 学校账号：新学年，或班级已经不在班级列表里 → 要重新选班级
+  var needsClass = school && p.cls !== STAFF_CLASS && (p.classYear !== s.schoolYear || s.classList.indexOf(p.cls) === -1);
+  var out = { email: p.email, cls: p.cls, seat: p.seat, name: p.name, nickname: p.nickname, school: school, needsClass: needsClass,
     coins: p.coins, owned: p.owned.slice(), selected: p.selected, admin: !!admin,
     skins: (p.skins || ['default']).slice(), skin: p.skin || 'default', xp: p.xp || 0, level: levelFromXp_(p.xp || 0),
     badges: (p.badges || []).slice(), title: p.title || '', stats: p.stats || parseStats_('') };
@@ -358,7 +394,9 @@ function applyGifts_(found) {
       id = 'G' + Date.now().toString(36) + i;
       sh.getRange(i + 1, 4, 1, 1).setValues([[id]]);
     }
-    var match = who === 'all' || who === p.email.toLowerCase() || who === String(p.cls).toLowerCase();
+    var cls = String(p.cls).toLowerCase();
+    var match = (who === 'all' && cls !== OTHER_CLASS.toLowerCase()) || who === p.email.toLowerCase() || who === cls ||
+      (isGradeKey_(who) && cls.indexOf(who) === 0);
     if (!match || p.gifts.indexOf(id) !== -1) continue;
     p.gifts.push(id);
     p.coins = Math.max(0, p.coins + amount);
@@ -366,6 +404,12 @@ function applyGifts_(found) {
   }
   if (changed) writePlayer_(found.row, p);
   return added;
+}
+
+// "J1", "S2", "S2AC" … in CoinGifts → every class of that grade
+function isGradeKey_(who) {
+  if (/^[js][1-3]$/.test(who)) return true;
+  return getSettings_().grades.some(function (g) { return g.grade.toLowerCase() === who; });
 }
 
 function findPlayer_(email) {
@@ -381,7 +425,7 @@ function writePlayer_(row, p) {
   var sh = playersSheet_();
   var vals = [[p.email, p.cls, p.seat, p.name, p.nickname, p.coins, p.owned.join(','), p.selected, new Date(),
     (p.gifts || []).join(','), (p.skins || ['default']).join(','), p.skin || 'default', p.xp || 0,
-    (p.badges || []).join(','), p.title || '', JSON.stringify(p.stats || {})]];
+    (p.badges || []).join(','), p.title || '', JSON.stringify(p.stats || {}), p.classYear || '']];
   if (row) sh.getRange(row, 1, 1, vals[0].length).setValues(vals);
   else sh.appendRow(vals[0]);
 }
@@ -395,9 +439,17 @@ function saveProfile_(body) {
   var name = String(body.name || '').trim().replace(/\s+/g, ' ');
   var nick = String(body.nickname || '').trim();
   var admin = isAdmin_(email);
-  if (s.classList.indexOf(cls) === -1 && !(admin && cls === STAFF_CLASS)) return { ok: false, error: 'bad_class', message: 'Please choose your class.' };
-  if (!/^\d{1,2}$/.test(seat) || Number(seat) < 1) return { ok: false, error: 'bad_seat', message: 'Seat number must be 1–99.' };
-  if (name.length < 1 || name.length > 40) return { ok: false, error: 'bad_name', message: 'Please enter your name (max 40 characters).' };
+  var school = isSchoolEmail_(email, s);
+  if (!school) {
+    // 校外账号：不用班级和座号，名字可以不填
+    if (!s.allowOthers) return { ok: false, error: 'not_school', message: 'Only school accounts can play right now.' };
+    cls = OTHER_CLASS; seat = '';
+    if (name.length > 40) return { ok: false, error: 'bad_name', message: 'Name: max 40 characters.' };
+  } else {
+    if (s.classList.indexOf(cls) === -1 && !(admin && cls === STAFF_CLASS)) return { ok: false, error: 'bad_class', message: 'Please choose your class.' };
+    if (!/^\d{1,2}$/.test(seat) || Number(seat) < 1) return { ok: false, error: 'bad_seat', message: 'Seat number must be 1–99.' };
+    if (name.length < 1 || name.length > 40) return { ok: false, error: 'bad_name', message: 'Please enter your name (max 40 characters).' };
+  }
   var nickErr = checkNickname_(nick);
   if (nickErr) return { ok: false, error: 'bad_nickname', message: nickErr };
 
@@ -413,6 +465,7 @@ function saveProfile_(body) {
   var p = found ? found.data : { email: email, coins: 0, owned: ['starter'], selected: 'starter', gifts: [],
     skins: ['default'], skin: 'default', xp: 0, badges: [], title: '', stats: parseStats_('') };
   p.cls = cls; p.seat = seat; p.name = name; p.nickname = nick;
+  if (school) p.classYear = s.schoolYear;
   writePlayer_(found ? found.row : null, p);
   var gift = applyGifts_(findPlayer_(email));
   return { ok: true, player: publicPlayer_(findPlayer_(email).data, admin), admin: admin, gift: gift };
@@ -652,22 +705,27 @@ function getLeaderboard_() {
   var players = playerMap_();
   var admins = adminMap_();
   // 排行榜只算单人模式、不算管理员
-  var scores = readScores_().filter(function (r) { return r.acc >= s.minAcc && r.mode !== 'Multi' && !admins[r.email]; });
+  // 校外账号：AllowOtherAccounts = NO 时也不显示
+  var visible = function (r) { return !admins[r.email] && (s.allowOthers || isSchoolEmail_(r.email, s)); };
+  var all = readScores_();
+  var scores = all.filter(function (r) { return r.acc >= s.minAcc && r.mode !== 'Multi' && visible(r); });
   var weekStart = weekStartMs_();
   var out = { ok: true, minAccuracy: s.minAcc, weekStart: weekStart, boards: {},
-    classBattle: classBattle_(readScores_().filter(function (r) { return !admins[r.email] && r.cls !== STAFF_CLASS; }), weekStart, s.classList) };
+    classBattle: classBattle_(all.filter(function (r) {
+      return !admins[r.email] && isSchoolEmail_(r.email, s) && r.cls !== STAFF_CLASS && r.cls !== OTHER_CLASS;
+    }), weekStart, s.classList) };
   ['Easy', 'Normal', 'Hard'].forEach(function (d) {
     var rows = scores.filter(function (r) { return r.difficulty === d; });
     out.boards[d] = {
-      week: topTen_(rows.filter(function (r) { return r.time >= weekStart; }), players),
-      all: topTen_(rows, players),
+      week: topTen_(rows.filter(function (r) { return r.time >= weekStart; }), players, s),
+      all: topTen_(rows, players, s),
     };
   });
   cache.put('leaderboard', JSON.stringify(out), 60);
   return out;
 }
 
-function topTen_(rows, players) {
+function topTen_(rows, players, s) {
   var best = {};
   rows.forEach(function (r) {
     var b = best[r.email];
@@ -679,7 +737,7 @@ function topTen_(rows, players) {
     .map(function (r) {
       var p = players[r.email];
       return { nickname: (p && p.nickname) || r.nickname || 'Pilot', title: (p && p.title) || '', level: p ? levelFromXp_(p.xp) : 1,
-        wpm: r.wpm, acc: r.acc, time: r.time };
+        wpm: r.wpm, acc: r.acc, time: r.time, ext: !isSchoolEmail_(r.email, s) };
     });
 }
 
@@ -698,7 +756,12 @@ function classBattle_(rows, weekStart, classList) {
   var week = tally(weekStart, Infinity);
   classList.forEach(function (c) { if (!week.some(function (w) { return w.cls === c; })) week.push({ cls: c, kills: 0, games: 0, pilots: 0 }); });
   var last = tally(weekStart - 7 * 86400000, weekStart);
-  return { week: week, lastChampion: last.length && last[0].kills > 0 ? last[0] : null };
+  // 上周冠军：初中（J…）、高中（S…）、全校各一个
+  function champ(prefix) {
+    var c = last.filter(function (r) { return !prefix || r.cls.charAt(0) === prefix; })[0];
+    return c && c.kills > 0 ? c : null;
+  }
+  return { week: week, lastChampion: champ(''), champions: { junior: champ('J'), senior: champ('S'), all: champ('') } };
 }
 
 /* ------------------------------------------------------------------ */
@@ -739,7 +802,10 @@ function teacher_(body) {
     return a.cls < b.cls ? -1 : a.cls > b.cls ? 1 : (Number(a.seat) || 0) - (Number(b.seat) || 0);
   });
 
-  var classNames = s.classList.slice();
+  // 只列出有人玩过的班级（全校六十多班，没玩过的不显示），顺序照班级列表；校外账号归在 OTHER
+  var played = {};
+  scores.forEach(function (r) { played[r.cls] = true; });
+  var classNames = s.classList.filter(function (c) { return played[c]; });
   scores.forEach(function (r) { if (classNames.indexOf(r.cls) === -1) classNames.push(r.cls); });
 
   var classes = classNames.map(function (c) {

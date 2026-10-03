@@ -1,4 +1,4 @@
-const { chromium, LAUNCH } = require('./pw');
+const { chromium, LAUNCH, pickClass } = require('./pw');
 const OUT = __dirname + '/shots/';
 require('fs').mkdirSync(OUT, { recursive: true });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -28,21 +28,21 @@ async function mk(email, cls, seat, name, nick, hash) {
   const page = await (await browser.newContext({ viewport: { width: 900, height: 640 } })).newPage(); watch(page, nick);
   await page.goto(BASE + (hash || '')); await sleep(1200);
   await page.evaluate((e) => __MST.onGoogleCredential({ credential: 'fake:' + e }), email); await sleep(900);
-  await page.selectOption('#pf-class', cls); await page.fill('#pf-seat', seat); await page.fill('#pf-name', name); await page.fill('#pf-nick', nick);
+  await pickClass(page, cls); await page.fill('#pf-seat', seat); await page.fill('#pf-name', name); await page.fill('#pf-nick', nick);
   await page.click('#btn-profile-save'); await sleep(1500);
   return page;
 }
 let browser;
 (async () => {
   browser = await chromium.launch(LAUNCH);
-  const h = await mk('cara@foonyew.edu.my', '1A', '1', 'Cara', 'CaraX');
+  const h = await mk('cara@foonyew.edu.my', 'J101', '1', 'Cara', 'CaraX');
   await h.click('#btn-multi'); await sleep(300); await h.selectOption('#mp-stages', '5'); await h.click('#btn-mp-create'); await sleep(2500);
   const code = (await h.textContent('#mp-room-code')).trim();
   // guest 1 joins with invite link before signing in -> should auto join after sign in
-  const g1 = await mk('dan@foonyew.edu.my', '1A', '2', 'Dan', 'DanDash', '#join=' + code);
+  const g1 = await mk('dan@foonyew.edu.my', 'J101', '2', 'Dan', 'DanDash', '#join=' + code);
   await sleep(4000);
   console.log('g1 screen after invite link:', await g1.evaluate(() => __MST.S.currentScreen), '| lobby:', (await g1.textContent('#mp-players')).replace(/\s+/g, ' '));
-  const g2 = await mk('eve@foonyew.edu.my', '1B', '3', 'Eve', 'EveStar');
+  const g2 = await mk('eve@foonyew.edu.my', 'J102', '3', 'Eve', 'EveStar');
   await g2.click('#btn-multi'); await sleep(300); await g2.fill('#mp-code', 'ZZZZZ'); await g2.click('#btn-mp-join'); await sleep(6000);
   console.log('bad code msg:', await g2.textContent('#mp-msg'));
   await g2.fill('#mp-code', code.toLowerCase()); await g2.click('#btn-mp-join'); await sleep(4000);

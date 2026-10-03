@@ -43,7 +43,7 @@ async function api(payload, method = "POST", timeoutMs = 15000) {
 }
 
 const S = {
-  remote: { classes: store.get("mst_classes", CFG.FALLBACK_CLASSES), clientId: "", minAccuracy: 80, loaded: false },
+  remote: { classes: store.get("mst_classes", CFG.FALLBACK_CLASSES), clientId: "", minAccuracy: 80, loaded: false, grades: store.get("mst_grades", []), allowOthers: true },
   session: store.sget("mst_session", null), // {token, email, exp, player, admin}
   guest: store.get("mst_guest", { coins: 0, owned: ["starter"], selected: "starter" }),
   prefs: Object.assign({ diff: "Normal", bank: "everyday", quality: "high", sound: true, music: true, meanings: true, bg: "deep", shopTab: "mechs" }, store.get("mst_prefs", {})),
@@ -103,7 +103,7 @@ function renderUserChip() {
   const el = $("#userchip");
   if (isSchool()) {
     const p = S.session.player;
-    const who = p ? `${esc(p.nickname)} <span class="small">(${esc(p.cls)}-${esc(p.seat)})</span>${p.admin ? ' <span class="small" style="color:var(--gold)">ADMIN</span>' : ""}` : esc(S.session.email);
+    const who = p ? `${esc(p.nickname)} <span class="small">(${p.cls === "OTHER" ? "🌐" : esc(p.cls) + "-" + esc(p.seat)})</span>${p.admin ? ' <span class="small" style="color:var(--gold)">ADMIN</span>' : ""}` : esc(S.session.email);
     el.innerHTML = `<span>👤 ${who}</span>${p ? `<span class="lv">LV ${myLevel()}</span>` : ""}<span class="coins">🪙 ${p ? coinText(p.coins) : 0}</span><button id="btn-signout">Sign out</button>`;
     $("#btn-signout").onclick = signOut;
   } else if (S.guestMode) {
@@ -116,7 +116,7 @@ function goPlayHome() {
   currentView = "play";
   $$("#topbar nav button").forEach(b => b.classList.toggle("active", b.dataset.view === "play"));
   if (isSchool()) {
-    if (!S.session.player) return showProfile();
+    if (!S.session.player || S.session.player.needsClass) return showProfile();
     if (S.pendingJoin) { const c = S.pendingJoin; S.pendingJoin = null; showMulti(); $("#mp-code").value = c; netJoin(c); return; }
     showHangar();
   } else if (S.guestMode) showHangar();
@@ -132,6 +132,10 @@ async function loadRemoteConfig() {
     const c = await api({ action: "config" }, "GET", 10000);
     if (c && c.ok) {
       if (c.classes && c.classes.length) { S.remote.classes = c.classes; store.set("mst_classes", c.classes); }
+      S.remote.grades = Array.isArray(c.grades) ? c.grades : [];
+      store.set("mst_grades", S.remote.grades);
+      S.remote.allowOthers = c.allowOthers !== false;
+      if (c.domain) S.remote.domain = c.domain;
       S.remote.clientId = c.clientId || "";
       S.remote.minAccuracy = c.minAccuracy;
       S.remote.loaded = true;
@@ -140,6 +144,7 @@ async function loadRemoteConfig() {
       addEventBank();
       renderEventBanners();
       if (S.currentScreen === "scr-hangar") { renderBankSelect(); renderPilot(); }
+      if (S.currentScreen === "scr-profile") renderGradeOptions($("#pf-grade").value, $("#pf-classno").value);
     }
   } catch (e) { console.warn("config load failed", e); }
 }
@@ -161,6 +166,7 @@ async function showLogin() {
   renderUserChip();
   const warn = $("#setup-warn"), msg = $("#login-msg");
   warn.style.display = "none";
+  renderLoginHint();
   if (!CFG.APPS_SCRIPT_URL) {
     warn.style.display = "block";
     warn.textContent = "Setup not finished: school sign-in and score saving are off. (Teacher: paste the Apps Script URL into config.js — see README.)";
@@ -172,7 +178,9 @@ async function showLogin() {
   if (!S.remote.clientId) { $("#gsi-btn").innerHTML = ""; warn.style.display = "block"; warn.textContent = "Setup not finished: GoogleClientId is empty in the Settings sheet."; return; }
   try {
     await loadGsi();
-    google.accounts.id.initialize({ client_id: S.remote.clientId, callback: onGoogleCredential, hd: CFG.SCHOOL_DOMAIN, auto_select: false, cancel_on_tap_outside: true });
+    const opts = { client_id: S.remote.clientId, callback: onGoogleCredential, auto_select: false, cancel_on_tap_outside: true };
+    if (!S.remote.allowOthers) opts.hd = schoolDomain(); // only offer school accounts
+    google.accounts.id.initialize(opts);
     $("#gsi-btn").innerHTML = "";
     google.accounts.id.renderButton($("#gsi-btn"), { theme: "filled_blue", size: "large", shape: "pill", text: "signin_with" });
   } catch (e) {
@@ -196,6 +204,7 @@ async function onGoogleCredential(resp) {
       flushPending();
       goPlayHome();
     } else if (r.error === "not_school") {
+      S.remote.allowOthers = false; renderLoginHint();
       msg.className = "err";
       msg.textContent = `${r.email || "This account"} is not a @${CFG.SCHOOL_DOMAIN} account. You can still play as a guest (scores are not recorded).`;
     } else { msg.className = "err"; msg.textContent = "Sign-in failed (" + r.error + "). Please try again."; }
@@ -218,38 +227,90 @@ async function refreshMe(force) {
   S.lastMe = Date.now();
   try {
     const r = await api({ action: "me", token: S.session.token }, "POST", 12000);
-    if (r.ok && r.player) { setPlayer(r.player); giftToast(r); renderUserChip(); if (S.currentScreen === "scr-hangar") { renderMechList(); renderSkinList(); renderPilot(); } }
+    if (r.ok && r.player) {
+      setPlayer(r.player); giftToast(r); renderUserChip();
+      if (r.player.needsClass && S.currentScreen === "scr-hangar") return showProfile(); // new school year
+      if (S.currentScreen === "scr-hangar") { renderMechList(); renderSkinList(); renderPilot(); } }
   } catch (e) {}
 }
 
 /* =====================================================================
  *  PROFILE
  * ===================================================================== */
+function schoolDomain() { return (S.remote.domain || CFG.SCHOOL_DOMAIN).toLowerCase(); }
+function isOutsider() { return isSchool() && !String(S.session.email || "").toLowerCase().endsWith("@" + schoolDomain()); }
+function clsLabel(c) { return c === "OTHER" ? "🌐" : c; }
+function renderLoginHint() {
+  $("#login-hint").innerHTML = S.remote.allowOthers
+    ? `Sign in with Google to save your scores, coins and mechs. Foon Yew students: please use your <b>@${esc(schoolDomain())}</b> account.`
+    : `Sign in with your <b>@${esc(schoolDomain())}</b> account to save your scores, coins and mechs.`;
+}
+// junior classes get a 2-digit number (J105), senior classes don't (S2AC3) — same rule as Code.gs classCode_
+function classCode(grade, n) { return grade + (grade[0] === "J" && n < 10 ? "0" + n : String(n)); }
+function profileClass() {
+  const g = $("#pf-grade").value;
+  if (!g) return "";
+  if (g === "STAFF" || !S.remote.grades.length) return g;
+  const n = Number($("#pf-classno").value);
+  return n ? classCode(g, n) : "";
+}
+function renderClassNumbers(keep) {
+  const g = $("#pf-grade").value, grade = S.remote.grades.find(x => x.grade === g);
+  const sel = $("#pf-classno");
+  $("#pf-classno-field").style.display = grade ? "" : "none";
+  sel.innerHTML = '<option value="">—</option>' + (grade ? Array.from({ length: grade.count }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join("") : "");
+  if (keep) sel.value = keep;
+  const c = profileClass();
+  $("#pf-class-preview").textContent = c && c !== "STAFF" ? "Your class: " + c : "";
+}
+// Form first (J1, J2 … S3S), then the class number. Falls back to a plain class list if ClassCounts is not set.
+function renderGradeOptions(g0, n0) {
+  const p = (S.session && S.session.player) || {};
+  const grades = S.remote.grades.length ? S.remote.grades.map(g => g.grade) : S.remote.classes.slice();
+  if (S.session.admin || p.admin) grades.push("STAFF");
+  $("#pf-grade").innerHTML = '<option value="">— choose —</option>' + grades.map(g => `<option>${esc(g)}</option>`).join("");
+  $("#pf-grade").value = grades.includes(g0) ? g0 : "";
+  renderClassNumbers(n0);
+}
 function showProfile() {
   showScreen("scr-profile");
   renderUserChip();
   const p = S.session.player || {};
-  const classes = S.remote.classes.slice();
-  if (S.session.admin || p.admin) classes.push("STAFF");
-  const sel = $("#pf-class");
-  sel.innerHTML = '<option value="">— choose —</option>' + classes.map(c => `<option>${esc(c)}</option>`).join("");
-  sel.value = p.cls || "";
-  $("#pf-seat").value = p.seat || "";
+  const outsider = isOutsider();
+  $("#pf-school-row").style.display = outsider ? "none" : "";
+  $("#pf-name-label").textContent = outsider ? "Name (optional — only your teacher can see it)" : "Full name";
+  $("#profile-newyear").style.display = !outsider && p.needsClass && p.cls ? "" : "none";
+  let g0 = "", n0 = "";
+  if (p.cls && !p.needsClass) {
+    g0 = p.cls;
+    for (const g of S.remote.grades) for (let n = 1; n <= g.count; n++) if (classCode(g.grade, n) === p.cls) { g0 = g.grade; n0 = String(n); }
+  }
+  renderGradeOptions(g0, n0);
+  $("#pf-seat").value = p.needsClass ? "" : (p.seat || "");
   $("#pf-name").value = p.name || "";
   $("#pf-nick").value = p.nickname || "";
-  $("#profile-email").textContent = "Signed in as " + S.session.email + (S.session.admin ? " (admin)" : "");
+  $("#profile-email").textContent = "Signed in as " + S.session.email + (S.session.admin ? " (admin)" : "") + (outsider ? " — not a school account, so no class is needed." : "");
   $("#profile-msg").textContent = "";
-  $("#btn-profile-cancel").style.display = S.session.player ? "" : "none";
+  $("#btn-profile-cancel").style.display = S.session.player && !p.needsClass ? "" : "none";
 }
+$("#pf-grade").onchange = () => { $("#profile-msg").textContent = ""; renderClassNumbers(); };
+$("#pf-classno").onchange = () => { $("#profile-msg").textContent = ""; renderClassNumbers($("#pf-classno").value); };
 $("#btn-profile-cancel").onclick = () => showHangar();
 $("#profile-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const msg = $("#profile-msg"), btn = $("#btn-profile-save");
   const nick = $("#pf-nick").value.trim();
+  const outsider = isOutsider(), cls = profileClass();
+  msg.className = "err";
+  if (!outsider) {
+    if (!cls) { msg.textContent = "Please choose your form and class."; return; }
+    if (!(Number($("#pf-seat").value) >= 1)) { msg.textContent = "Please enter your seat number."; return; }
+    if (!$("#pf-name").value.trim()) { msg.textContent = "Please enter your full name."; return; }
+  }
   if (!/^[A-Za-z0-9_\-㐀-鿿]{2,12}$/.test(nick)) { msg.textContent = "Nickname: 2–12 letters, numbers or Chinese characters, no spaces."; return; }
   btn.disabled = true; msg.className = "muted"; msg.textContent = "Saving…";
   try {
-    const r = await api({ action: "saveProfile", token: S.session.token, cls: $("#pf-class").value, seat: $("#pf-seat").value, name: $("#pf-name").value, nickname: nick });
+    const r = await api({ action: "saveProfile", token: S.session.token, cls: outsider ? "" : cls, seat: $("#pf-seat").value, name: $("#pf-name").value, nickname: nick });
     if (r.ok) { S.session.admin = !!r.admin; setPlayer(r.player); giftToast(r); goPlayHome(); }
     else if (r.error === "session_expired") { msg.className = "err"; msg.textContent = "Your sign-in expired. Please sign in again."; setTimeout(signOut, 1500); }
     else { msg.className = "err"; msg.textContent = r.message || ("Could not save (" + r.error + ")."); }

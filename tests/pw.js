@@ -8,4 +8,11 @@ try { pw = require('playwright'); } catch (e) {
     process.exit(1);
   }
 }
-module.exports = { chromium: pw.chromium, LAUNCH: { args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] } };
+// Fill the profile form's class: 'J105' -> Form J1, class 5; 'S2AC3' -> Form S2AC, class 3; 'STAFF' for admins
+async function pickClass(page, cls) {
+  if (cls === 'STAFF') return page.selectOption('#pf-grade', 'STAFF');
+  const m = cls.match(/^([JS]\d(?:AC|S)?)(\d+)$/);
+  await page.selectOption('#pf-grade', m[1]);
+  await page.selectOption('#pf-classno', String(Number(m[2])));
+}
+module.exports = { pickClass, chromium: pw.chromium, LAUNCH: { args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] } };
