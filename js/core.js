@@ -522,39 +522,85 @@ $("#btn-multi").addEventListener("click", () => { if (ensureOwnedSelection()) sh
 /* =====================================================================
  *  SOUND (tiny synth, no files)
  * ===================================================================== */
-let actx = null, noiseBuf = null;
+let actx = null, noiseBuf = null, sfxBus = null;
+function audioCtx() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  actx = actx || new AC();
+  if (actx.state === "suspended" && !(window.OfflineAudioContext && actx instanceof OfflineAudioContext)) actx.resume().catch(() => {});
+  if (!noiseBuf) { noiseBuf = actx.createBuffer(1, actx.sampleRate * 0.6, actx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  return actx;
+}
+// all sound effects go through a compressor (no harsh peaks) plus a short "space" echo
+function fxBus() {
+  if (sfxBus) return sfxBus;
+  const comp = actx.createDynamicsCompressor();
+  comp.threshold.value = -18; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.15;
+  const makeup = actx.createGain(); makeup.gain.value = 1.8;
+  comp.connect(makeup); makeup.connect(actx.destination);
+  const dry = actx.createGain(), delay = actx.createDelay(0.5), fb = actx.createGain(), wet = actx.createGain(), tone = actx.createBiquadFilter();
+  delay.delayTime.value = 0.11; fb.gain.value = 0.28; wet.gain.value = 0.22; tone.type = "lowpass"; tone.frequency.value = 2200;
+  dry.connect(comp); dry.connect(delay); delay.connect(tone); tone.connect(fb); fb.connect(delay); tone.connect(wet); wet.connect(comp);
+  return (sfxBus = dry);
+}
 function sfx(type) {
   if (!S.prefs.sound) return;
   try {
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    actx = actx || new AC();
-    if (actx.state === "suspended") actx.resume();
-    const t = actx.currentTime, g = actx.createGain();
-    g.connect(actx.destination);
-    const tone = (freq, dur, vol, wave = "square", slide = 0) => {
-      const o = actx.createOscillator(); o.type = wave; o.frequency.setValueAtTime(freq, t);
-      if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
-      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(g); o.start(t); o.stop(t + dur + 0.02);
+    if (!audioCtx()) return;
+    const t = actx.currentTime, out = fxBus();
+    // one voice: oscillator → filter → envelope
+    const voice = (o) => {
+      const osc = actx.createOscillator(), g = actx.createGain(), f = actx.createBiquadFilter();
+      osc.type = o.wave || "sine"; osc.detune.value = o.detune || 0;
+      osc.frequency.setValueAtTime(o.f0, t);
+      if (o.f1) osc.frequency.exponentialRampToValueAtTime(o.f1, t + (o.glide || o.dur));
+      f.type = "lowpass"; f.Q.value = o.q || 0.7;
+      f.frequency.setValueAtTime(o.cut0 || 8000, t);
+      if (o.cut1) f.frequency.exponentialRampToValueAtTime(o.cut1, t + o.dur);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(o.vol, t + (o.att || 0.004));
+      g.gain.exponentialRampToValueAtTime(0.0001, t + o.dur);
+      osc.connect(f); f.connect(g); g.connect(out); osc.start(t); osc.stop(t + o.dur + 0.03);
     };
-    const noise = (dur, vol) => {
-      if (!noiseBuf) { noiseBuf = actx.createBuffer(1, actx.sampleRate * 0.6, actx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
-      const s = actx.createBufferSource(); s.buffer = noiseBuf;
-      const f = actx.createBiquadFilter(); f.type = "lowpass"; f.frequency.setValueAtTime(1800, t); f.frequency.exponentialRampToValueAtTime(120, t + dur);
-      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      s.connect(f); f.connect(g); s.start(t); s.stop(t + dur);
+    const noise = (o) => {
+      const src = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
+      src.buffer = noiseBuf;
+      f.type = o.type || "lowpass"; f.Q.value = o.q || 0.8;
+      f.frequency.setValueAtTime(o.f0, t); if (o.f1) f.frequency.exponentialRampToValueAtTime(o.f1, t + o.dur);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(o.vol, t + (o.att || 0.005)); g.gain.exponentialRampToValueAtTime(0.0001, t + o.dur);
+      src.connect(f); f.connect(g); g.connect(out); src.start(t); src.stop(t + o.dur + 0.02);
     };
+    const jitter = 1 + (Math.random() - 0.5) * 0.08; // small pitch change so rapid shots don't sound identical
     switch (type) {
-      case "key": tone(1300, 0.04, 0.03); break;
-      case "err": tone(160, 0.15, 0.06, "sawtooth"); break;
-      case "kill": noise(0.35, 0.18); break;
-      case "hit": noise(0.5, 0.3); tone(90, 0.4, 0.1, "sawtooth", -40); break;
-      case "item": tone(700, 0.18, 0.05, "triangle", 700); break;
-      case "boss": tone(110, 1.2, 0.08, "sawtooth", 60); break;
-      case "buster": noise(0.8, 0.25); tone(220, 0.8, 0.08, "sawtooth", 600); break;
-      case "clear": tone(520, 0.5, 0.06, "triangle", 520); break;
-      case "steal": tone(300, 0.25, 0.05, "square", -150); break;
+      case "key": // small beam shot: a soft, quick downward "pew"
+        voice({ wave: "sawtooth", f0: 880 * jitter, f1: 260 * jitter, dur: 0.11, vol: 0.05, cut0: 2600, cut1: 500, q: 4 });
+        voice({ wave: "sine", f0: 440 * jitter, f1: 140, dur: 0.09, vol: 0.06 });
+        noise({ type: "bandpass", f0: 3000, f1: 900, dur: 0.05, vol: 0.025, q: 1.5 });
+        break;
+      case "beam": // big beam rifle when a word is finished: "bvvshuuu"
+        voice({ wave: "sawtooth", f0: 1100 * jitter, f1: 120, glide: 0.32, dur: 0.42, vol: 0.09, cut0: 3500, cut1: 300, q: 6 });
+        voice({ wave: "sawtooth", f0: 1110 * jitter, f1: 118, detune: 12, glide: 0.32, dur: 0.42, vol: 0.07, cut0: 3500, cut1: 300, q: 6 });
+        voice({ wave: "sine", f0: 160, f1: 45, dur: 0.3, vol: 0.18 });
+        noise({ type: "bandpass", f0: 4000, f1: 600, dur: 0.35, vol: 0.06, q: 1.2 });
+        break;
+      case "err": voice({ wave: "square", f0: 180, f1: 140, dur: 0.14, vol: 0.05, cut0: 900 }); break;
+      case "kill": // explosion: deep, not hissy
+        noise({ f0: 1400, f1: 90, dur: 0.5, vol: 0.22 });
+        voice({ wave: "sine", f0: 110, f1: 35, dur: 0.4, vol: 0.2 });
+        break;
+      case "hit":
+        noise({ f0: 1200, f1: 80, dur: 0.6, vol: 0.3 });
+        voice({ wave: "sawtooth", f0: 95, f1: 45, dur: 0.45, vol: 0.1, cut0: 600 });
+        break;
+      case "item": voice({ wave: "triangle", f0: 700, f1: 1400, dur: 0.2, vol: 0.07 }); voice({ wave: "sine", f0: 1050, f1: 2100, dur: 0.2, vol: 0.03 }); break;
+      case "boss": voice({ wave: "sawtooth", f0: 110, f1: 165, dur: 1.2, vol: 0.08, cut0: 900, att: 0.08 }); voice({ wave: "sawtooth", f0: 111, f1: 166, detune: 10, dur: 1.2, vol: 0.06, cut0: 900, att: 0.08 }); break;
+      case "buster":
+        noise({ f0: 2000, f1: 100, dur: 0.9, vol: 0.25 });
+        voice({ wave: "sawtooth", f0: 220, f1: 900, dur: 0.8, vol: 0.07, cut0: 1500, cut1: 4000 });
+        voice({ wave: "sine", f0: 90, f1: 30, dur: 0.7, vol: 0.2 });
+        break;
+      case "clear": voice({ wave: "triangle", f0: 523, f1: 1046, dur: 0.5, vol: 0.08 }); voice({ wave: "triangle", f0: 659, f1: 1318, dur: 0.5, vol: 0.05 }); break;
+      case "steal": voice({ wave: "square", f0: 320, f1: 160, dur: 0.25, vol: 0.04, cut0: 1500 }); break;
     }
   } catch (e) {}
 }
