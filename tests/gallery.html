@@ -1,0 +1,41 @@
+<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;background:#0b0d26;color:#fff;font:12px sans-serif}#l{position:absolute;inset:0;pointer-events:none}#l div{position:absolute;text-align:center}</style></head>
+<body><canvas id="c"></canvas><div id="l"></div>
+<script src="/lib/three.min.js"></script><script src="/models.js"></script>
+<script>
+const set = new URLSearchParams(location.search).get('set') || 'mechs';
+const pose = new URLSearchParams(location.search).get('pose') || 'idle';
+const W = 1500, H = 900;
+const r = new THREE.WebGLRenderer({ canvas: c, antialias: true }); r.setSize(W, H); r.setScissorTest(true);
+const items = [];
+if (set === 'mechs') MODELS.MECHS.forEach(d => items.push({ name: d.name, obj: MODELS.buildMech(d), mech: true }));
+if (set === 'enemies') Object.keys(MODELS.ENEMY_TYPES).forEach(k => items.push({ name: k, obj: MODELS.buildEnemy(k) }));
+if (set === 'bosses') MODELS.BOSSES.forEach((b, i) => { if (!b.event) items.push({ name: b.name, obj: MODELS.buildBoss(i), boss: true }); });
+if (set === 'evbosses') MODELS.BOSSES.forEach((b, i) => { if (b.event) items.push({ name: b.name + ' (' + b.event + ')', obj: MODELS.buildBoss(i), boss: true }); });
+const cols = 5, rows = Math.ceil(items.length / cols), cw = W / cols, ch = H / rows;
+items.forEach((it, i) => {
+  const s = new THREE.Scene(); s.background = new THREE.Color(0x10142e);
+  s.add(new THREE.HemisphereLight(0x9cc4ff, 0x20123a, 0.95)); const d = new THREE.DirectionalLight(0xffffff, 1.1); d.position.set(6, 12, 8); s.add(d);
+  s.add(it.obj); it.scene = s;
+  const bb = new THREE.Box3().setFromObject(it.obj), size = new THREE.Vector3(), cen = new THREE.Vector3(); bb.getSize(size); bb.getCenter(cen);
+  const cam = new THREE.PerspectiveCamera(40, cw / ch, 0.1, 500); const dist = Math.max(size.x, size.y, size.z) * 1.6;
+  it.obj.rotation.y = it.boss ? 0.5 : 0.6;
+  cam.position.set(cen.x + dist * 0.35, cen.y + dist * 0.25, cen.z + dist); cam.lookAt(cen); it.cam = cam;
+  if (it.mech) { it.anim = MODELS.newAnim(); }
+  const lab = document.createElement('div'); lab.textContent = it.name; lab.style.left = (i % cols) * cw + 'px'; lab.style.top = Math.floor(i / cols) * ch + 4 + 'px'; lab.style.width = cw + 'px'; l.appendChild(lab);
+});
+let t = 0;
+function draw() {
+  t += 0.05;
+  items.forEach((it, i) => {
+    if (it.mech) {
+      if (pose === 'aim') { MODELS.aimMech(it.obj, it.anim, new THREE.Vector3(2, 3, 20)); if (t > 1.5 && t < 1.6) MODELS.fireMech(it.anim, true); }
+      MODELS.animateMech(it.obj, it.anim, 0.05);
+    } else if (it.boss) MODELS.animateBoss(it.obj, 0.05, t, 0, null);
+    else MODELS.animateEnemy(it.obj, { progress: 0.8, wob: i, vx: 2 }, 0.05, t);
+    const x = (i % cols) * cw, y = H - (Math.floor(i / cols) + 1) * ch;
+    r.setViewport(x, y, cw, ch); r.setScissor(x, y, cw, ch); r.render(it.scene, it.cam);
+  });
+}
+for (let k = 0; k < 34; k++) draw();
+window.done = true;
+</script></body></html>

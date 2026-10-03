@@ -20,9 +20,11 @@ Play solo, or team up with 2–4 classmates online and race each other for point
 | `words.js` | Word banks (10 banks, about 2,600 words) | Only to add words (see below) |
 | `meanings.js` | Chinese meanings shown when a word is destroyed | Only to add meanings for new words |
 | `apps-script/Code.gs` | The backend that you paste into Google Apps Script | No (just copy and paste it, following the steps) |
-| `models.js` | 3D models and animations: 15 mechs, 13 enemy types, 15 bosses | No |
+| `models.js` | 3D models and animations: 15 mechs, 13 enemy types, 15 bosses + 17 festival bosses | No |
 | `js/` | Game code (solo, multiplayer, levels and badges, leaderboard, teacher dashboard) | No |
 | `lib/` | Three.js (3D engine) and PeerJS (multiplayer), both MIT-licensed | No |
+| `tests/` | Automatic tests (backend and browser) | No |
+| `CLAUDE.md` | Developer guide: how the code works, how to run the tests, how to make a new game from this one | No |
 
 ---
 
