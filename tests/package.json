@@ -1,0 +1,14 @@
+{
+  "name": "mecha-strike-typer-tests",
+  "private": true,
+  "description": "Tests for Mecha Strike Typer (see ../CLAUDE.md)",
+  "scripts": {
+    "unit": "node unit.js",
+    "e2e": "node run.js",
+    "test": "node unit.js && node run.js"
+  },
+  "dependencies": {
+    "express": "^4.22.3",
+    "peer": "^1.0.2"
+  }
+}
