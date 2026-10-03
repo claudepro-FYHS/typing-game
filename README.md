@@ -39,7 +39,7 @@ Play solo, or team up with 2–4 classmates online and race each other for point
 2. Search for **Google Auth Platform** in the top search bar and click **Get started**:
    - App name: `Mecha Strike Typer`
    - Support email: choose your email
-   - Audience: choose **Internal**
+   - Audience: choose **External** (so students' personal Google accounts can sign in too; choose **Internal** if only school accounts should play)
    - Contact email: your email
    - Tick the agreement box, then click **Create**
 3. In the left menu choose **Clients**, then click **+ Create client**:
@@ -64,7 +64,8 @@ Play solo, or team up with 2–4 classmates online and race each other for point
    3. Click **Allow**.
    4. When the execution log shows `Setup done. 设置完成！`, it worked.
 6. Back in the spreadsheet you'll see seven new tabs: **Scores, Players, Settings, BannedWords, Admins, CoinGifts, Events**. In the **Settings** tab, edit column B:
-   - **Classes**: your classes, separated by commas, e.g. `1A, 1B, 1C, 2A, 2B`
+   - **ClassCounts**: how many classes each form has, e.g. `J1:12, J2:12, J3:12, S1AC:4, S1S:6, S2AC:4, S2S:6, S3AC:4, S3S:6`. **Change the numbers to the school's real class counts.** Students choose their form, then their class number.
+   - **AllowOtherAccounts**: `YES` lets non-school Google accounts play too (see "Players from outside the school" below); `NO` = school accounts only.
    - **TeacherPassword**: the teacher dashboard password. **Be sure to change** the default `change-me-2026`.
    - **GoogleClientId**: paste the Client ID from Step A
 7. Publish it as a web app: back in Apps Script, click **Deploy → New deployment** at the top right.
@@ -111,7 +112,9 @@ Everything is changed in the Google Sheet. **You don't need to touch GitHub.** C
 
 | What to change | Where |
 |---|---|
-| Class list | **Settings** tab → `Classes`, comma-separated |
+| Number of classes in each form | **Settings** tab → `ClassCounts`, e.g. `J1:12, S2AC:4` |
+| Let non-school Google accounts play | **Settings** tab → `AllowOtherAccounts` (`YES` / `NO`) |
+| Start the new school year early or late | **Settings** tab → `SchoolYear` (see below) |
 | Teacher dashboard password | **Settings** tab → `TeacherPassword` |
 | Minimum accuracy for the leaderboard | **Settings** tab → `LeaderboardMinAccuracy` (default 80) |
 | A student's inappropriate nickname | **Players** tab → edit the `Nickname` cell directly |
@@ -139,10 +142,11 @@ Each row is one gift:
 | Column A: who | Column B: coins | Column C: note (anything) | Column D: filled in automatically, don't edit |
 |---|---|---|---|
 | `amy@foonyew.edu.my` | 200 | Contest winner | |
-| `2B` | 50 | Reward for class 2B | |
+| `J105` | 50 | Reward for class J105 | |
+| `S2` | 30 | Every S2 class (S2AC and S2S) | |
 | `ALL` | 100 | School holiday gift | |
 
-- Column A can be one student's email, a class (e.g. `2B`), or `ALL` (every student).
+- Column A can be one student's email, a class (e.g. `J105`), a form (`J1`, `S2`, `S2AC` …), or `ALL` (every school student; players from outside the school are not included).
 - Each student receives each gift only once. Next time they open the game they'll see "🎁 Your teacher sent you … coins!".
 - A negative number in column B takes coins away (never below 0).
 
@@ -289,7 +293,7 @@ The game has **18 festival events** and switches them on by itself — you don't
 - Words are drawn like cards from a deck: no word repeats until the whole word bank has been used.
 
 **Leaderboard**
-- **⚔️ Class Battle:** every enemy destroyed this week (solo and multiplayer) counts for the player's class. Classes are ranked by total kills, and last week's champion class is shown.
+- **⚔️ Class Battle:** every enemy destroyed this week (solo and multiplayer) counts for the player's class. Classes are ranked by total kills in three boards: **Junior** (J1–J3), **Senior** (S1–S3) and **Whole school**, each with last week's champion class.
 - Separate boards for each difficulty, each with "This week" and "All time".
 - Ranked by WPM; accuracy must be at least 80% to appear.
 - Solo games only; admins are not included.
@@ -303,11 +307,30 @@ The game has **18 festival events** and switches them on by itself — you don't
 
 ---
 
+## Classes, the new school year, and players from outside the school
+
+**Classes.** Students pick their **form** (J1, J2, J3, S1AC, S1S, S2AC, S2S, S3AC, S3S) and then their **class number**. The class is saved like this:
+- Junior classes have a 2-digit number: J1 class 5 → **`J105`**, J3 class 11 → **`J311`**
+- Senior classes don't: S2AC class 3 → **`S2AC3`**, S1S class 6 → **`S1S6`**
+
+The forms and how many classes each has come from `ClassCounts` in the **Settings** tab. If you add a new kind of form, just add it there (e.g. `S1X:2`).
+
+**New school year.** On **1 January** every year, each student is asked to choose their new class and seat number the next time they sign in. Their coins, mechs, level and badges are kept. Old scores keep the class they had at the time. If your school year changes on another day, type the year into `SchoolYear` yourself (e.g. type `2027` on the day you want the change); leave it blank to switch automatically on 1 January.
+
+**Players from outside the school** (`AllowOtherAccounts` = `YES`):
+- Anyone with a Google account (e.g. Gmail) can sign in. Their coins, mechs, level and badges are saved just like a student's.
+- They only choose a nickname (a name is optional). They don't choose a class or seat number. In the Players and Scores tabs their class is **`OTHER`**.
+- They appear on the leaderboard with a 🌐 next to their nickname. They are **not** counted in the Class Battle, and they are grouped under `OTHER` in the teacher dashboard.
+- For this to work, the Google Cloud sign-in must be set to **External** (Step A). If you chose **Internal** before: open https://console.cloud.google.com/ → **Google Auth Platform → Audience** → **Make external**, then make sure the publishing status is **In production** (click **Publish app** if it says *Testing*). The game only asks for name and email, so Google does not need to review the app.
+- Set `AllowOtherAccounts` to `NO` at any time: outside players can no longer sign in, and they disappear from the leaderboard (their data stays in the sheet).
+
+---
+
 ## Privacy and security
 
 - The teacher password is stored only in your Google Sheet and is checked by Apps Script. **It is not in the public web page code.**
 - The leaderboard sends out only nicknames, WPM, accuracy and dates. **Real names and emails are never sent.**
-- When a student signs in, Apps Script checks the sign-in token with Google and accepts scores only from `@foonyew.edu.my` accounts. Even someone who knows the backend URL can't submit scores pretending to be a student.
+- When a player signs in, Apps Script checks the sign-in token with Google, so nobody can submit scores pretending to be someone else, even if they know the backend URL. Only `@foonyew.edu.my` accounts can choose a class; other Google accounts are accepted only while `AllowOtherAccounts` is `YES`.
 - A student's sign-in is kept only in the current browser tab and ends when the browser is closed. School computers are shared, so please still remind students to click **Sign out** when they finish.
 - If a score can't be uploaded (for example, the network is down), the game still shows the result and keeps it on that computer. It is sent automatically the next time the game is opened, within 12 hours.
 

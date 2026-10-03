@@ -1,4 +1,4 @@
-const { chromium, LAUNCH } = require('./pw');
+const { chromium, LAUNCH, pickClass } = require('./pw');
 const OUT = __dirname + '/shots/';
 require('fs').mkdirSync(OUT, { recursive: true });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -24,7 +24,7 @@ async function autoType(page, seconds) {
   sp.on('pageerror', e => errors.push('S ' + e.message));
   await sp.goto('http://localhost:8123/'); await sleep(1200);
   await sp.evaluate(() => __MST.onGoogleCredential({ credential: 'fake:lee@foonyew.edu.my' })); await sleep(900);
-  await sp.selectOption('#pf-class', '1B'); await sp.fill('#pf-seat', '8'); await sp.fill('#pf-name', 'Lee'); await sp.fill('#pf-nick', 'LeeLaser');
+  await pickClass(sp, 'J102'); await sp.fill('#pf-seat', '8'); await sp.fill('#pf-name', 'Lee'); await sp.fill('#pf-nick', 'LeeLaser');
   await sp.click('#btn-profile-save'); await sleep(1200);
   await sp.click('#shop-seg [data-tab="paint"]'); await sleep(200);
   await sp.click('#btn-launch'); await sleep(3000);

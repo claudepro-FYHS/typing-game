@@ -1,4 +1,4 @@
-const { chromium, LAUNCH } = require('./pw');
+const { chromium, LAUNCH, pickClass } = require('./pw');
 const OUT = __dirname + '/shots/';
 require('fs').mkdirSync(OUT, { recursive: true });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -84,7 +84,7 @@ async function autoType(page, seconds, opts = {}) {
   const sp = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage(); watch(sp, 'S');
   await sp.goto(BASE); await sleep(1200);
   await sp.evaluate(() => __MST.onGoogleCredential({ credential: 'fake:kim@foonyew.edu.my' })); await sleep(900);
-  await sp.selectOption('#pf-class', '2C'); await sp.fill('#pf-seat', '5'); await sp.fill('#pf-name', 'Kim'); await sp.fill('#pf-nick', 'KimKong');
+  await pickClass(sp, 'J203'); await sp.fill('#pf-seat', '5'); await sp.fill('#pf-name', 'Kim'); await sp.fill('#pf-nick', 'KimKong');
   await sp.click('#btn-profile-save'); await sleep(1200);
   await sp.click('#btn-launch'); await sleep(3000);
   await autoType(sp, 40, { delay: 60 });

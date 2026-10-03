@@ -3,7 +3,7 @@
 //   node run.js                       -> all browser tests
 //   node run.js e2e-festivals gallery -> only these
 const { spawn } = require('child_process');
-const ALL = ['e2e-gameplay', 'e2e-phone-school', 'e2e-guest-admin-2p', 'e2e-multiplayer-3p', 'e2e-festivals', 'gallery'];
+const ALL = ['e2e-classes', 'e2e-gameplay', 'e2e-phone-school', 'e2e-guest-admin-2p', 'e2e-multiplayer-3p', 'e2e-festivals', 'gallery'];
 const names = process.argv.slice(2).length ? process.argv.slice(2).map(n => n.replace(/\.js$/, '')) : ALL;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const start = (file) => { const p = spawn('node', [file], { cwd: __dirname, stdio: 'ignore' }); return p; };

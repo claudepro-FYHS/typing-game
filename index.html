@@ -325,7 +325,7 @@ body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); bo
       <div class="event-banner" id="login-event"></div>
       <div id="login-school">
         <h3>Foon Yew students</h3>
-        <p class="small muted">Sign in with your <b>@foonyew.edu.my</b> account to save your scores, coins and mechs.</p>
+        <p class="small muted" id="login-hint">Sign in with your <b>@foonyew.edu.my</b> account to save your scores, coins and mechs.</p>
         <div id="gsi-btn"></div>
         <div id="login-msg" class="err"></div>
       </div>
@@ -343,12 +343,15 @@ body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); bo
     <form class="card" id="profile-form" autocomplete="off">
       <h2>PILOT REGISTRATION</h2>
       <p class="small muted" id="profile-email"></p>
-      <div class="row">
-        <div class="field"><label for="pf-class">Class</label><select id="pf-class" required></select></div>
-        <div class="field"><label for="pf-seat">Seat No.</label><input id="pf-seat" type="number" min="1" max="99" inputmode="numeric" required></div>
+      <p class="note" id="profile-newyear" style="display:none">🎒 <b>New school year!</b> Please choose your new class and seat number. Your coins, mechs and level are kept.</p>
+      <div class="row" id="pf-school-row">
+        <div class="field"><label for="pf-grade">Form</label><select id="pf-grade"></select></div>
+        <div class="field" id="pf-classno-field"><label for="pf-classno">Class</label><select id="pf-classno"></select></div>
+        <div class="field"><label for="pf-seat">Seat No.</label><input id="pf-seat" type="number" min="1" max="99" inputmode="numeric"></div>
       </div>
-      <div class="field"><label for="pf-name">Full name</label><input id="pf-name" maxlength="40" required placeholder="e.g. Tan Wei Ming / 陈伟明"></div>
-      <div class="field"><label for="pf-nick">Nickname (shown on the leaderboard)</label><input id="pf-nick" maxlength="12" required placeholder="e.g. StarPilot7"></div>
+      <p class="small muted" id="pf-class-preview"></p>
+      <div class="field"><label for="pf-name" id="pf-name-label">Full name</label><input id="pf-name" maxlength="40" placeholder="e.g. Tan Wei Ming / 陈伟明"></div>
+      <div class="field"><label for="pf-nick">Nickname (shown on the leaderboard)</label><input id="pf-nick" maxlength="12" placeholder="e.g. StarPilot7"></div>
       <div class="note">
         <b>Why do I need a nickname?</b><br>
         The leaderboard can be seen by everyone, so it shows <b>only your nickname</b> — never your real name.

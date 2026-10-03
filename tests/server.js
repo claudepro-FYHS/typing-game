@@ -19,6 +19,7 @@ http.createServer((req, res) => {
   if (u.pathname === '/__admin') { sheets.Admins.data.push([u.searchParams.get('email'), 'YES', '']); res.end('ok'); return; }
   if (u.pathname === '/__gift') { sheets.CoinGifts.data.push([u.searchParams.get('who'), Number(u.searchParams.get('n')), '']); res.end('ok'); return; }
   if (u.pathname === '/__scores') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(sheets.Scores.data)); return; }
+  if (u.pathname === '/__set') { sheets.Settings.data.find(r => r[0] === u.searchParams.get('k'))[1] = u.searchParams.get('v'); ctx.CacheService.getScriptCache().remove('leaderboard'); res.end('ok'); return; }
   if (u.pathname === '/__fail') { global.failSubmit = u.searchParams.get('on') === '1'; res.end('ok'); return; }
   let p = u.pathname.startsWith('/__t/') ? path.join(__dirname, u.pathname.slice(5)) : path.join(ROOT, u.pathname === '/' ? 'index.html' : u.pathname);
   if (!fs.existsSync(p)) { res.writeHead(404); return res.end(); }

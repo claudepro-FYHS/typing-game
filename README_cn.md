@@ -39,7 +39,7 @@
 2. 在顶部搜索栏搜 **Google Auth Platform**，按 **Get started**：
    - App name 填 `Mecha Strike Typer`
    - Support email 选您的邮箱
-   - Audience 选 **Internal**
+   - Audience 选 **External**（让学生的私人 Google 账号也能登入；如果只想让学校账号玩，选 **Internal**）
    - Contact email 填您的邮箱
    - 打勾同意后按 **Create**
 3. 左边选 **Clients**，按 **+ Create client**：
@@ -64,7 +64,8 @@
    3. 按 **Allow**。
    4. 下方执行记录出现 `Setup done. 设置完成！` 就成功了。
 6. 回到试算表，会看到多了 **Scores、Players、Settings、BannedWords、Admins、CoinGifts、Events** 七个分页。在 **Settings** 分页改 B 栏：
-   - **Classes**：您的班级，用逗号分隔，例如 `1A, 1B, 1C, 2A, 2B`
+   - **ClassCounts**：每个年段有几班，例如 `J1:12, J2:12, J3:12, S1AC:4, S1S:6, S2AC:4, S2S:6, S3AC:4, S3S:6`。**请改成学校真实的班数。**学生会先选年段，再选班号。
+   - **AllowOtherAccounts**：`YES` = 校外的 Google 账号也能玩（见下面「校外玩家」）；`NO` = 只限学校账号。
    - **TeacherPassword**：老师后台密码。**一定要改掉**默认的 `change-me-2026`。
    - **GoogleClientId**：贴上步骤 A 复制的 Client ID
 7. 发布成网页应用：回到 Apps Script 页面，按右上角 **部署（Deploy）→ 新增部署作业（New deployment）**。
@@ -111,7 +112,9 @@
 
 | 想改什么 | 去哪里改 |
 |---|---|
-| 班级列表 | **Settings** 分页 → `Classes`，用逗号分隔 |
+| 每个年段的班数 | **Settings** 分页 → `ClassCounts`，例如 `J1:12, S2AC:4` |
+| 开放／关闭校外 Google 账号 | **Settings** 分页 → `AllowOtherAccounts`（`YES` / `NO`） |
+| 提早或延后换新学年 | **Settings** 分页 → `SchoolYear`（见下面） |
 | 老师后台密码 | **Settings** 分页 → `TeacherPassword` |
 | 排行榜最低准确率 | **Settings** 分页 → `LeaderboardMinAccuracy`（默认 80） |
 | 学生的不当花名 | **Players** 分页 → 直接改 `Nickname` 那一格 |
@@ -139,10 +142,11 @@
 | A 栏：送给谁 | B 栏：金币数量 | C 栏：备注（随意） | D 栏：自动产生，不要改 |
 |---|---|---|---|
 | `amy@foonyew.edu.my` | 200 | 比赛冠军 | |
-| `2B` | 50 | 2B 全班奖励 | |
+| `J105` | 50 | J105 全班奖励 | |
+| `S2` | 30 | 全部高二班级（S2AC 和 S2S） | |
 | `ALL` | 100 | 学校假期礼物 | |
 
-- A 栏可以填一个学生的 email、一个班级（例如 `2B`），或 `ALL`（全部学生）。
+- A 栏可以填一个学生的 email、一个班级（例如 `J105`）、一个年段（`J1`、`S2`、`S2AC`……），或 `ALL`（全部学校学生，不包括校外玩家）。
 - 每份礼物，每个学生只会收到一次。学生下次打开游戏时会看到「🎁 Your teacher sent you … coins!」。
 - B 栏填负数可以扣金币（最低扣到 0）。
 
@@ -289,7 +293,7 @@
 - 单字以「抽牌」方式出现：整个词库轮完一遍之前，同一个字不会重复出现。
 
 **排行榜**
-- **⚔️ 班级对抗赛**：本周每击落一架敌机（单人和多人都算），就替自己的班级加 1 分。各班按总击坠数排名，也会显示上周冠军班级。
+- **⚔️ 班级对抗赛**：本周每击落一架敌机（单人和多人都算），就替自己的班级加 1 分。各班按总击坠数排名，分 **初中**（J1–J3）、**高中**（S1–S3）、**全校** 三个榜，各自显示上周冠军班级。
 - 每个难度分开排，分「本周」和「全部时间」两个榜。
 - 以 WPM 排名，准确率要达到 80% 以上才会上榜。
 - 只算单人模式，管理员不列入。
@@ -303,11 +307,30 @@
 
 ---
 
+## 班级、新学年和校外玩家
+
+**班级**：学生先选**年段**（J1、J2、J3、S1AC、S1S、S2AC、S2S、S3AC、S3S），再选**班号**。班级会这样储存：
+- 初中班号补成两位数：J1 第 5 班 → **`J105`**，J3 第 11 班 → **`J311`**
+- 高中不补：S2AC 第 3 班 → **`S2AC3`**，S1S 第 6 班 → **`S1S6`**
+
+年段和每个年段的班数，都在 **Settings** 分页的 `ClassCounts` 设定。以后多了新的年段，直接加上去就可以（例如 `S1X:2`）。
+
+**新学年**：每年 **1 月 1 日**起，学生下次登入时会被要求重新选班级和座号。金币、机体、等级和徽章都会保留；旧成绩保留当时的班级。如果学校换学年的日子不是 1 月 1 日，可以在想换的那天把年份填进 `SchoolYear`（例如填 `2027`）；留空就是每年 1 月 1 日自动换。
+
+**校外玩家**（`AllowOtherAccounts` = `YES`）：
+- 任何 Google 账号（例如 Gmail）都可以登入，金币、机体、等级、徽章都会像学生一样保存。
+- 他们只需要填花名（名字可以不填），不用选班级和座号。在 Players 和 Scores 分页，他们的班级是 **`OTHER`**。
+- 他们会出现在排行榜上，花名旁边有 🌐。他们**不列入**班级对抗赛；在老师后台归在 `OTHER`。
+- 要让校外账号能登入，Google Cloud 的登入设定必须是 **External**（步骤 A）。如果之前选了 **Internal**：打开 https://console.cloud.google.com/ → **Google Auth Platform → Audience（目标对象）** → 按 **Make external（设为外部）**，再确认发布状态是 **In production（正式版）**（如果显示 *Testing*，按 **Publish app**）。游戏只读取名字和邮箱，所以 Google 不需要审核。
+- 随时可以把 `AllowOtherAccounts` 改成 `NO`：校外玩家就不能再登入，也会从排行榜消失（资料仍保留在试算表里）。
+
+---
+
 ## 隐私与安全
 
 - 老师密码只存在您的 Google Sheet 里，由 Apps Script 检查，**不在公开的网页代码里**。
 - 排行榜只送出花名、WPM、准确率和日期，**不会送出真实姓名或邮箱**。
-- 学生登入时，Apps Script 会向 Google 核对登入凭证，确认是 `@foonyew.edu.my` 账号才接受成绩。所以别人就算知道接收网址，也没办法冒充学生交成绩。
+- 玩家登入时，Apps Script 会向 Google 核对登入凭证，所以别人就算知道接收网址，也没办法冒充别人交成绩。只有 `@foonyew.edu.my` 账号可以选班级；其他 Google 账号只有在 `AllowOtherAccounts` 是 `YES` 时才接受。
 - 学生的登入状态只保存在当前的浏览器分页，关掉浏览器就会自动登出。学校电脑是共用的，还是请提醒学生玩完按 **Sign out**。
 - 如果成绩送出失败（例如网络断线），游戏照常显示成绩，并把成绩暂存在这台电脑。12 小时内下次打开游戏时会自动补送。
 

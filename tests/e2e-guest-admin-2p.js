@@ -1,4 +1,4 @@
-const { chromium, LAUNCH } = require('./pw');
+const { chromium, LAUNCH, pickClass } = require('./pw');
 const OUT = __dirname + '/shots/';
 require('fs').mkdirSync(OUT, { recursive: true });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -39,7 +39,7 @@ async function login(page, email) {
   await sleep(800);
 }
 async function register(page, cls, seat, name, nick) {
-  await page.selectOption('#pf-class', cls); await page.fill('#pf-seat', seat); await page.fill('#pf-name', name); await page.fill('#pf-nick', nick);
+  await pickClass(page, cls); await page.fill('#pf-seat', seat); await page.fill('#pf-name', name); await page.fill('#pf-nick', nick);
   await page.click('#btn-profile-save'); await sleep(900);
 }
 (async () => {
@@ -63,19 +63,19 @@ async function register(page, cls, seat, name, nick) {
   await fetch('http://localhost:8123/__admin?email=boss@foonyew.edu.my');
   const pb = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage(); watch(pb, 'B');
   await login(pb, 'boss@foonyew.edu.my');
-  const opts = await pb.$$eval('#pf-class option', o => o.map(x => x.value));
+  const opts = await pb.$$eval('#pf-grade option', o => o.map(x => x.value));
   console.log('B admin class options include STAFF:', opts.includes('STAFF'));
   await register(pb, 'STAFF', '1', 'Cikgu Lim', 'Sensei');
   console.log('B chip:', (await pb.textContent('#userchip')).replace(/\s+/g, ' '));
   await pb.click('.mech-card[data-id="liberty"] [data-use], .mech-card[data-id="liberty"]'); await sleep(300);
   console.log('B liberty owned/use button:', await pb.$('.mech-card[data-id="liberty"] [data-use]') !== null || (await pb.textContent('.mech-card[data-id="liberty"]')).includes('IN USE'));
   // ---------- C: multiplayer (2 students) ----------
-  await fetch('http://localhost:8123/__gift?who=2B&n=400');
+  await fetch('http://localhost:8123/__gift?who=J202&n=400');
   const ph = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage(); watch(ph, 'HOST');
   const pg = await (await browser.newContext({ viewport: { width: 1000, height: 760 } })).newPage(); watch(pg, 'GUEST');
-  await login(ph, 'amy@foonyew.edu.my'); await register(ph, '2B', '3', 'Amy Tan', 'AmyAce');
+  await login(ph, 'amy@foonyew.edu.my'); await register(ph, 'J202', '3', 'Amy Tan', 'AmyAce');
   console.log('HOST chip after gift:', (await ph.textContent('#userchip')).replace(/\s+/g, ' '));
-  await login(pg, 'ben@foonyew.edu.my'); await register(pg, '2A', '7', 'Ben Lee', 'BenBolt');
+  await login(pg, 'ben@foonyew.edu.my'); await register(pg, 'J201', '7', 'Ben Lee', 'BenBolt');
   // ben buys + uses another mech? keep starter. Amy buys aile with gift coins
   await ph.click('.mech-card[data-id="aile"] [data-buy]'); await sleep(900);
   await ph.click('#btn-multi'); await sleep(500);

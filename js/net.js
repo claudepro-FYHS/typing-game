@@ -54,7 +54,7 @@ function renderLobby() {
   const st = NET.settings || {};
   $("#mp-room-settings").textContent = st.diff ? `${st.diff} · ${(WORD_BANKS[st.bank] || {}).name || ""} · ${st.stages ? st.stages + " stages" : "Endless"} · ${(NET.lobby || []).length}/4 pilots` : "Connecting…";
   $("#mp-players").innerHTML = (NET.lobby || []).map((p, i) => `<div class="prow"><span class="dot" style="background:${PCOLORS[i % 4]}"></span>
-    <span class="who"><b>${esc(p.nick)}</b> <span class="lv small">LV${p.level || 1}</span> <span class="muted small">${esc(p.cls || "")}</span>${p.pid === "p0" ? ' <span class="small" style="color:var(--gold)">HOST</span>' : ""}${p.pid === NET.myPid ? ' <span class="small">(you)</span>' : ""}</span>
+    <span class="who"><b>${esc(p.nick)}</b> <span class="lv small">LV${p.level || 1}</span> <span class="muted small">${esc(clsLabel(p.cls || ""))}</span>${p.pid === "p0" ? ' <span class="small" style="color:var(--gold)">HOST</span>' : ""}${p.pid === NET.myPid ? ' <span class="small">(you)</span>' : ""}</span>
     <span class="small muted">${esc((MECH_BY_ID[p.mech] || MECHS[0]).name)}</span></div>`).join("") || '<p class="muted">Waiting…</p>';
   const host = NET.role === "host";
   $("#btn-mp-start").style.display = host ? "" : "none";
