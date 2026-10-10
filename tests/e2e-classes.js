@@ -47,7 +47,7 @@ async function playSome(page, seconds) {
   await p.click('#btn-profile-save'); await sleep(1500);
   check(await p.evaluate(() => __MST.S.currentScreen) === 'scr-hangar', 'saved -> hangar');
   check((await p.textContent('#userchip')).includes('J105-12'), 'user chip shows J105-12');
-  console.log('  upload:', await playSome(p, 30));
+  console.log('  upload:', await playSome(p, 45));
   // edit profile keeps the class
   await p.click('#btn-to-hangar').catch(() => {}); await sleep(800);
   await p.click('#btn-edit-profile'); await sleep(500);
@@ -78,7 +78,7 @@ async function playSome(page, seconds) {
   await o.click('#btn-profile-save'); await sleep(1500);
   check(await o.evaluate(() => __MST.S.currentScreen) === 'scr-hangar', 'outsider saved -> hangar');
   check((await o.textContent('#userchip')).includes('🌐'), 'outsider chip shows 🌐');
-  console.log('  upload:', await playSome(o, 30));
+  console.log('  upload:', await playSome(o, 45));
   const coins = await o.evaluate(() => __MST.S.session.player.coins);
   await login(o, 'pal@gmail.com');
   check(await o.evaluate(() => __MST.S.session.player.coins) === coins && coins > 0, 'outsider coins kept after signing in again: ' + coins);

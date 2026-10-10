@@ -934,7 +934,7 @@ function showResult(r, ranking, reason, keystrokes) {
 async function submitResult(r) {
   const item = { token: S.session.token, result: r, at: Date.now() };
   try {
-    const res = await api({ action: "submitScore", token: item.token, result: r }, "POST", 20000);
+    const res = await apiRetry({ action: "submitScore", token: item.token, result: r }, "POST", 30000, 2);
     if (res.ok) { if (res.player && isSchool()) setPlayer(res.player); giftToast(res); return { state: "ok", res }; }
     if (res.error === "session_expired" || res.error === "no_profile") return { state: "expired" };
     throw new Error(res.error);

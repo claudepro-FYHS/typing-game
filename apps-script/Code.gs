@@ -105,6 +105,7 @@ function setup() {
   getSecret_();
   // 纯粹为了让授权画面一次过要求「连接外部服务」的权限
   try { UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?id_token=x', { muteHttpExceptions: true }); } catch (e) {}
+  CacheService.getScriptCache().remove('config');
   Logger.log('Setup done. 设置完成！');
 }
 
@@ -137,7 +138,10 @@ function getSecret_() {
   return s;
 }
 
+// Settings are read from the sheet once per request (many functions need them).
+var SETTINGS_MEMO_ = null;
 function getSettings_() {
+  if (SETTINGS_MEMO_) return SETTINGS_MEMO_;
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var st = ss.getSheetByName(SHEET_SETTINGS);
   if (!st) { setup(); st = ss.getSheetByName(SHEET_SETTINGS); }
@@ -151,6 +155,7 @@ function getSettings_() {
   out.minAcc = Number(out.LeaderboardMinAccuracy) || 0;
   out.domain = (out.SchoolDomain || 'foonyew.edu.my').toLowerCase();
   out.disabledEvents = String(out.DisabledEvents || '').toLowerCase().split(/[,，、;\s]+/).filter(String);
+  SETTINGS_MEMO_ = out;
   return out;
 }
 
@@ -183,8 +188,9 @@ function isSchoolEmail_(email, s) { return String(email).toLowerCase().split('@'
 
 function doGet(e) {
   var p = (e && e.parameter) || {};
+  SETTINGS_MEMO_ = null;
   try {
-    if (p.action === 'config') return json_(getPublicConfig_());
+    if (p.action === 'config') return json_(cachedConfig_());
     if (p.action === 'leaderboard') return json_(getLeaderboard_());
     return json_({ ok: true, message: 'Mecha Strike Typer backend is running. 接收端运行中。' });
   } catch (err) {
@@ -197,10 +203,11 @@ function doPost(e) {
   try { body = JSON.parse((e && e.postData && e.postData.contents) || '{}'); } catch (x) {
     return json_({ ok: false, error: 'bad_request' });
   }
+  SETTINGS_MEMO_ = null;
   try {
     switch (body.action) {
       case 'login': return json_(login_(body));
-      case 'me': return json_(withLock_(function () { return me_(body); }));
+      case 'me': return json_(me_(body));
       case 'saveProfile': return json_(withLock_(function () { return saveProfile_(body); }));
       case 'submitScore': return json_(withLock_(function () { return submitScore_(body); }));
       case 'buyMech': return json_(withLock_(function () { return buyMech_(body); }));
@@ -209,7 +216,7 @@ function doPost(e) {
       case 'selectSkin': return json_(withLock_(function () { return selectSkin_(body); }));
       case 'setTitle': return json_(withLock_(function () { return setTitle_(body); }));
       case 'teacher': return json_(teacher_(body));
-      case 'config': return json_(getPublicConfig_());
+      case 'config': return json_(cachedConfig_());
       case 'leaderboard': return json_(getLeaderboard_());
     }
     return json_({ ok: false, error: 'unknown_action' });
@@ -222,10 +229,22 @@ function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
+// When the whole class saves at once, requests queue for the lock. If the queue is too long,
+// answer "busy" (the web page waits a moment and tries again) instead of crashing.
 function withLock_(fn) {
   var lock = LockService.getScriptLock();
-  lock.waitLock(25000);
+  if (!lock.tryLock(28000)) return { ok: false, error: 'busy' };
   try { return fn(); } finally { lock.releaseLock(); }
+}
+
+// Every page load asks for the config, so keep it in the cache for 60 s.
+function cachedConfig_() {
+  var cache = CacheService.getScriptCache();
+  var hit = cache.get('config');
+  if (hit) return JSON.parse(hit);
+  var c = getPublicConfig_();
+  cache.put('config', JSON.stringify(c), 60);
+  return c;
 }
 
 function getPublicConfig_() {
@@ -265,27 +284,44 @@ function eventWindows_() {
 function login_(body) {
   var s = getSettings_();
   if (!s.GoogleClientId) return { ok: false, error: 'no_client_id' };
-  var res = UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' +
-    encodeURIComponent(String(body.idToken || '')), { muteHttpExceptions: true });
-  if (res.getResponseCode() !== 200) return { ok: false, error: 'bad_token' };
+  // Google sometimes answers "busy" when a whole class signs in at once: wait and ask again.
+  var res = null, code = 0;
+  for (var attempt = 0; attempt < 4; attempt++) {
+    if (attempt) Utilities.sleep(400 * attempt + Math.floor(Math.random() * 400));
+    try {
+      res = UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' +
+        encodeURIComponent(String(body.idToken || '')), { muteHttpExceptions: true });
+      code = res.getResponseCode();
+    } catch (e) { code = 0; }
+    if (code === 200 || code === 400 || code === 401) break;
+  }
+  if (code === 400 || code === 401) return { ok: false, error: 'bad_token' };
+  if (code !== 200) return { ok: false, error: 'google_busy' };
   var info = JSON.parse(res.getContentText());
   if (info.aud !== s.GoogleClientId) return { ok: false, error: 'bad_token' };
   if (String(info.email_verified) !== 'true') return { ok: false, error: 'bad_token' };
   var email = String(info.email || '').toLowerCase();
   if (email.split('@')[1] !== s.domain && !s.allowOthers) return { ok: false, error: 'not_school', email: email };
-  var result = withLock_(function () { return refreshPlayer_(email); });
+  var result = refreshPlayer_(email);
+  if (!result.ok) return result;
   result.token = makeToken_(email);
   result.email = email;
   return result;
 }
 
 // 读取玩家资料，顺便发放老师送的金币；回传给网页的玩家资料（管理员会显示无限金币）
+// Only reads the sheet, so many students can sign in at the same time. The lock is taken
+// only when a teacher's coin gift has to be written to the player's row.
 function refreshPlayer_(email) {
   var admin = isAdmin_(email);
   var found = findPlayer_(email);
   if (!found) return { ok: true, player: null, admin: admin, gift: 0 };
-  var gift = applyGifts_(found);
-  return { ok: true, player: publicPlayer_(found.data, admin), admin: admin, gift: gift };
+  if (!hasNewGift_(found.data)) return { ok: true, player: publicPlayer_(found.data, admin), admin: admin, gift: 0 };
+  return withLock_(function () {
+    var fresh = findPlayer_(email);
+    var gift = applyGifts_(fresh);
+    return { ok: true, player: publicPlayer_(fresh.data, admin), admin: admin, gift: gift };
+  });
 }
 
 function me_(body) {
@@ -394,16 +430,33 @@ function applyGifts_(found) {
       id = 'G' + Date.now().toString(36) + i;
       sh.getRange(i + 1, 4, 1, 1).setValues([[id]]);
     }
-    var cls = String(p.cls).toLowerCase();
-    var match = (who === 'all' && cls !== OTHER_CLASS.toLowerCase()) || who === p.email.toLowerCase() || who === cls ||
-      (isGradeKey_(who) && cls.indexOf(who) === 0);
-    if (!match || p.gifts.indexOf(id) !== -1) continue;
+    if (!giftMatches_(who, p) || p.gifts.indexOf(id) !== -1) continue;
     p.gifts.push(id);
     p.coins = Math.max(0, p.coins + amount);
     added += amount; changed = true;
   }
   if (changed) writePlayer_(found.row, p);
   return added;
+}
+
+function giftMatches_(who, p) {
+  var cls = String(p.cls).toLowerCase();
+  return (who === 'all' && cls !== OTHER_CLASS.toLowerCase()) || who === p.email.toLowerCase() || who === cls ||
+    (isGradeKey_(who) && cls.indexOf(who) === 0);
+}
+
+// Read-only check: is there a gift (or a new gift row without an ID yet) for this player?
+function hasNewGift_(p) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_GIFTS);
+  if (!sh) return false;
+  var values = sh.getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    var who = String(values[i][0] || '').trim().toLowerCase();
+    if (!who || !Math.round(Number(values[i][1]) || 0)) continue;
+    var id = String(values[i][3] || '').trim();
+    if (!id || (giftMatches_(who, p) && p.gifts.indexOf(id) === -1)) return true;
+  }
+  return false;
 }
 
 // "J1", "S2", "S2AC" … in CoinGifts → every class of that grade

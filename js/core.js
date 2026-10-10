@@ -42,6 +42,27 @@ async function api(payload, method = "POST", timeoutMs = 15000) {
   } finally { clearTimeout(timer); }
 }
 
+// When the whole class signs in or saves at the same time, Apps Script or Google can be briefly busy.
+// Try again a few times, waiting a little longer (and a random extra bit, so 40 students don't
+// all retry at the same moment).
+const RETRY_ERRORS = ["busy", "google_busy", "server"];
+async function apiRetry(payload, method = "POST", timeoutMs = 30000, tries = 4, onRetry) {
+  let last;
+  for (let i = 0; i < tries; i++) {
+    if (i) {
+      if (onRetry) onRetry(i + 1, tries);
+      await new Promise(r => setTimeout(r, 1500 * i + Math.random() * 1500));
+    }
+    try {
+      const r = await api(payload, method, timeoutMs);
+      if (r && !r.ok && RETRY_ERRORS.includes(r.error) && i < tries - 1) { last = r; continue; }
+      return r;
+    } catch (e) { last = e; }
+  }
+  if (last instanceof Error) throw last;
+  return last;
+}
+
 const S = {
   remote: { classes: store.get("mst_classes", CFG.FALLBACK_CLASSES), clientId: "", minAccuracy: 80, loaded: false, grades: store.get("mst_grades", []), allowOthers: true },
   session: store.sget("mst_session", null), // {token, email, exp, player, admin}
@@ -129,7 +150,7 @@ function goPlayHome() {
 async function loadRemoteConfig() {
   if (!CFG.APPS_SCRIPT_URL) return;
   try {
-    const c = await api({ action: "config" }, "GET", 10000);
+    const c = await apiRetry({ action: "config" }, "GET", 15000, 3);
     if (c && c.ok) {
       if (c.classes && c.classes.length) { S.remote.classes = c.classes; store.set("mst_classes", c.classes); }
       S.remote.grades = Array.isArray(c.grades) ? c.grades : [];
@@ -193,7 +214,8 @@ async function onGoogleCredential(resp) {
   const msg = $("#login-msg");
   msg.className = "muted"; msg.textContent = "Signing in…";
   try {
-    const r = await api({ action: "login", idToken: resp.credential });
+    const r = await apiRetry({ action: "login", idToken: resp.credential }, "POST", 30000, 4,
+      (n, max) => { msg.className = "muted"; msg.textContent = `The school server is busy — trying again (${n}/${max})…`; });
     if (r.ok) {
       S.session = { token: r.token, email: r.email, exp: Date.now() + 11.5 * 3600 * 1000, player: null, admin: !!r.admin };
       setPlayer(r.player);
@@ -207,8 +229,15 @@ async function onGoogleCredential(resp) {
       S.remote.allowOthers = false; renderLoginHint();
       msg.className = "err";
       msg.textContent = `${r.email || "This account"} is not a @${CFG.SCHOOL_DOMAIN} account. You can still play as a guest (scores are not recorded).`;
-    } else { msg.className = "err"; msg.textContent = "Sign-in failed (" + r.error + "). Please try again."; }
-  } catch (e) { msg.className = "err"; msg.textContent = "Can't reach the school server. Please try again, or play as a guest."; }
+    } else if (RETRY_ERRORS.includes(r.error)) {
+      msg.className = "err"; msg.textContent = "The school server is very busy right now. Wait half a minute and click Sign in again, or play as a guest.";
+    } else { msg.className = "err"; msg.textContent = "Sign-in failed (" + r.error + "). Please click Sign in again."; }
+  } catch (e) {
+    msg.className = "err";
+    msg.textContent = e && e.name === "AbortError"
+      ? "The school server is taking too long. Wait half a minute and click Sign in again, or play as a guest."
+      : "Can't reach the school server (" + ((e && e.message) || "network") + "). Please click Sign in again, or play as a guest.";
+  }
 }
 
 function signOut() {
@@ -310,7 +339,7 @@ $("#profile-form").addEventListener("submit", async (e) => {
   if (!/^[A-Za-z0-9_\-㐀-鿿]{2,12}$/.test(nick)) { msg.textContent = "Nickname: 2–12 letters, numbers or Chinese characters, no spaces."; return; }
   btn.disabled = true; msg.className = "muted"; msg.textContent = "Saving…";
   try {
-    const r = await api({ action: "saveProfile", token: S.session.token, cls: outsider ? "" : cls, seat: $("#pf-seat").value, name: $("#pf-name").value, nickname: nick });
+    const r = await apiRetry({ action: "saveProfile", token: S.session.token, cls: outsider ? "" : cls, seat: $("#pf-seat").value, name: $("#pf-name").value, nickname: nick });
     if (r.ok) { S.session.admin = !!r.admin; setPlayer(r.player); giftToast(r); goPlayHome(); }
     else if (r.error === "session_expired") { msg.className = "err"; msg.textContent = "Your sign-in expired. Please sign in again."; setTimeout(signOut, 1500); }
     else { msg.className = "err"; msg.textContent = r.message || ("Could not save (" + r.error + ")."); }
