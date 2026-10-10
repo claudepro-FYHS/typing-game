@@ -52,7 +52,13 @@ Event-sourced, so solo and multiplayer share one code path:
 - Sheets: `Scores, Players, Settings, BannedWords, Admins, CoinGifts, Events`. `setup()` creates and migrates them, and is safe to run again.
 - Login: Google Identity Services ID token → `login_` checks it with Google's tokeninfo endpoint (audience, domain) → returns an HMAC-signed session token valid for 12 hours (`makeToken_`/`checkToken_`). Non-school Google accounts are accepted while the `AllowOtherAccounts` setting is `YES`. They get class `OTHER` with no seat, show 🌐 on the leaderboard (`ext`), and are left out of the class battle. The client's `isSchool()` means "signed in"; `isOutsider()` means signed in with a non-school account.
 - Classes: `ClassCounts` (`J1:12, S2AC:4 …`) produces the class list. Junior classes get a 2-digit number (`J105`), senior classes don't (`S2AC3`): see `classCode_` in Code.gs and `classCode` in core.js. The Players column `Class Year` + the `SchoolYear` setting (blank = current calendar year) drive `needsClass`, which makes students pick a new class each school year; `needsClass` is also set when their class is no longer in the list. CoinGifts accept a form (`J1`, `S2`, `S2AC`) as well as a class, email or `ALL` (school accounts only).
-- Requests: POST with `Content-Type: text/plain` (avoids CORS preflight) and a JSON body `{action, token, ...}`. GET is used for `config` and `leaderboard`. Writes use `LockService`; the leaderboard is cached in `CacheService`.
+- Requests: POST with `Content-Type: text/plain` (avoids CORS preflight) and a JSON body `{action, token, ...}`. GET is used for `config` and `leaderboard`.
+- **A whole class arrives at once.** Apps Script runs about 30 requests at a time, and the script lock is a single queue, so:
+  - Only writes take the lock (`withLock_`, which returns `{error:'busy'}` instead of throwing when the queue is too long). Sign-in and `me` only read, and take the lock only when a coin gift must be written (`hasNewGift_`).
+  - `getSettings_()` is read once per request (`SETTINGS_MEMO_`, reset in `doGet`/`doPost`).
+  - The config is cached for 60 s (`cachedConfig_`; `setup()` clears it), and the leaderboard for 60 s.
+  - Google's tokeninfo is retried on 5xx/429 (`google_busy`).
+  - The client's `apiRetry()` retries `busy` / `google_busy` / `server` / network errors with a growing, random delay. Unsaved scores wait in `mst_pending` and are resent every 2 minutes.
 - The server is the authority for school accounts. Coin rewards are capped (`kills*25 + bosses*400`, max 8000 per game), and mech/skin prices are re-checked (`MECH_PRICES`, `SKIN_PRICES`).
 - **Duplicated rules:** levels (`reaching L needs 50·(L−1)·L XP`), XP per game, BADGES, skin prices, festival IDs and the class-code rule exist in both `Code.gs` and `js/progress.js`/`js/calendar.js`. When you change one, change the other.
 - After changing Code.gs the teacher must paste it, run `setup`, and deploy a **new version** (Deploy → Manage deployments → ✏️ → New version). Always tell them.
@@ -99,6 +105,7 @@ node run.js e2e-festivals gallery   # just some of them
 | `e2e-multiplayer-3p.js` | Invite link, wrong room code, 3 players, one player leaving, fair target split, score rows |
 | `e2e-festivals.js` | Banner, festival bank and boss on 8 fake dates; April Fools respawn |
 | `gallery.js` | Screenshots of every mech (idle and aiming), enemy and boss |
+| `e2e-login-busy.js` | Sign-in while Google is busy, the server returns HTTP 500, or the lock queue is full (mock routes `/__busy?login=&google=&lock=`) |
 | `audio-preview.js` | Renders the music and sound effects to `shots/*.wav` (OfflineAudioContext) and fails if anything clips |
 
 ## Making a new game from this one

@@ -193,6 +193,7 @@ goPlayHome();
 requestAnimationFrame(frame);
 loadRemoteConfig().then(() => { if (S.currentScreen === "scr-login") showLogin(); });
 if (isSchool()) flushPending();
+setInterval(() => { if (isSchool() && !G.running) flushPending(); }, 120000); // resend scores that could not be saved
 window.addEventListener("online", flushPending);
 // test hook (used by automated tests only)
 window.__MST = { G, S, get NET() { return NET; }, startGame, handleChar, onGoogleCredential, requestItem, requestSpecial, MODELS };

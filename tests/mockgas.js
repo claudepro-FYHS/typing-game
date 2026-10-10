@@ -35,6 +35,8 @@ function makeEnv(opts = {}) {
     },
     UrlFetchApp: {
       fetch(url) {
+        ctx.__fetches = (ctx.__fetches || 0) + 1;
+        if (ctx.__googleBusy > 0) { ctx.__googleBusy--; return { getResponseCode: () => 503, getContentText: () => '' }; }
         const tok = decodeURIComponent(url.split('id_token=')[1] || '');
         if (!tok.startsWith('fake:')) return { getResponseCode: () => 400, getContentText: () => '{}' };
         const email = tok.slice(5);
@@ -43,7 +45,7 @@ function makeEnv(opts = {}) {
       },
     },
     CacheService: { getScriptCache: () => ({ get: k => cache[k] || null, put: (k, v) => { cache[k] = v; }, remove: k => { delete cache[k]; } }) },
-    LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+    LockService: { getScriptLock: () => ({ waitLock() {}, tryLock() { return !ctx.__lockBusy; }, releaseLock() {} }) },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ content: s, setMimeType() { return this; } }) },
     Logger: { log: (...a) => opts.verbose && console.log(...a) },
     Date, JSON, Math, Object, Array, String, Number,

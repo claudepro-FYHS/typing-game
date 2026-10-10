@@ -108,7 +108,7 @@ Play solo, or team up with 2–4 classmates online and race each other for point
 
 ## Changing settings later
 
-Everything is changed in the Google Sheet. **You don't need to touch GitHub.** Changes take effect when students refresh the page.
+Everything is changed in the Google Sheet. **You don't need to touch GitHub.** Changes take effect when students refresh the page (settings can take up to 1 minute to show, because the game keeps a copy for 1 minute to stay fast).
 
 | What to change | Where |
 |---|---|
@@ -356,6 +356,15 @@ The forms and how many classes each has come from `ClassCounts` in the **Setting
   - ask the school IT team to allow `0.peerjs.com` and WebRTC, or
   - contact the maintainer to switch to Google Firebase for connections (this needs one extra free setup step).
 - If the host closes the page or loses connection, the match ends and everyone sees their own results.
+
+**Some students can't sign in, but the internet is fine**
+- When the whole class signs in at the same moment, the school server (Apps Script) or Google can be busy for a few seconds. The game now waits and tries again by itself (the message says *"trying again (2/4)…"*), so usually just wait a few seconds.
+- If a student still sees *"The school server is very busy"* or *"Can't reach the school server"*: wait half a minute and click **Sign in** again.
+- If the Google sign-in window itself shows an error, or closes straight away:
+  - make sure pop-ups are allowed for the game page;
+  - in Chrome, open the game in a normal window (not Incognito), or allow third-party cookies for `accounts.google.com`;
+  - if several Google accounts are signed in on that computer, choose the student's own account in the list.
+- To see what went wrong, open Apps Script → **Executions** (the ☰ list icon on the left). Failed runs are marked red, with the error message.
 
 **Will scores get jammed if the whole class submits at once?**
 - Apps Script writes scores one at a time in a queue.

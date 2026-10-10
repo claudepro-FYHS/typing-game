@@ -12,6 +12,7 @@ http.createServer((req, res) => {
     if (req.method === 'GET') return send(ctx.doGet({ parameter: Object.fromEntries(u.searchParams) }));
     let body = ''; req.on('data', d => body += d); req.on('end', () => {
       if (global.failSubmit && body.includes('submitScore')) { res.writeHead(500); return res.end(); }
+      if (global.failLogins > 0 && body.includes('"login"')) { global.failLogins--; res.writeHead(500); return res.end(); }
       send(ctx.doPost({ postData: { contents: body } }));
     });
     return;
@@ -19,7 +20,14 @@ http.createServer((req, res) => {
   if (u.pathname === '/__admin') { sheets.Admins.data.push([u.searchParams.get('email'), 'YES', '']); res.end('ok'); return; }
   if (u.pathname === '/__gift') { sheets.CoinGifts.data.push([u.searchParams.get('who'), Number(u.searchParams.get('n')), '']); res.end('ok'); return; }
   if (u.pathname === '/__scores') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(sheets.Scores.data)); return; }
-  if (u.pathname === '/__set') { sheets.Settings.data.find(r => r[0] === u.searchParams.get('k'))[1] = u.searchParams.get('v'); ctx.CacheService.getScriptCache().remove('leaderboard'); res.end('ok'); return; }
+  if (u.pathname === '/__set') { sheets.Settings.data.find(r => r[0] === u.searchParams.get('k'))[1] = u.searchParams.get('v'); ctx.CacheService.getScriptCache().remove('leaderboard'); ctx.CacheService.getScriptCache().remove('config'); res.end('ok'); return; }
+  // simulate a busy school server: the next n sign-ins get HTTP 500 / Google answers "busy" n times / the lock is taken
+  if (u.pathname === '/__busy') {
+    global.failLogins = Number(u.searchParams.get('login') || 0);
+    ctx.__googleBusy = Number(u.searchParams.get('google') || 0);
+    ctx.__lockBusy = u.searchParams.get('lock') === '1';
+    res.end('ok'); return;
+  }
   if (u.pathname === '/__fail') { global.failSubmit = u.searchParams.get('on') === '1'; res.end('ok'); return; }
   let p = u.pathname.startsWith('/__t/') ? path.join(__dirname, u.pathname.slice(5)) : path.join(ROOT, u.pathname === '/' ? 'index.html' : u.pathname);
   if (!fs.existsSync(p)) { res.writeHead(404); return res.end(); }

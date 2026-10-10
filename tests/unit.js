@@ -2,7 +2,9 @@ const { makeEnv } = require('./mockgas');
 const assert = require('assert');
 const { ctx, sheets } = makeEnv();
 const post = b => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(b) } }).content);
-const get = p => JSON.parse(ctx.doGet({ parameter: p }).content);
+const rawGet = p => JSON.parse(ctx.doGet({ parameter: p }).content);
+// config is cached for 60 s on the server; most tests want the fresh value
+const get = p => { if (p.action === 'config') ctx.CacheService.getScriptCache().remove('config'); return rawGet(p); };
 ctx.setup();
 // set client id + password
 sheets.Settings.data.forEach(r => { if (r[0] === 'GoogleClientId') r[1] = 'cid'; if (r[0] === 'TeacherPassword') r[1] = 'pw123'; });
@@ -130,10 +132,10 @@ sheets.Events.data.push(['midautumn', '2026-09-18', '2026-10-04', '中秋节 Mid
 assert.deepEqual(JSON.parse(JSON.stringify(ctx.eventWindows_())).map(w => w.id), ['anniversary', 'midautumn']);
 ctx.setup(); // migration deletes the old default row
 assert.deepEqual(JSON.parse(JSON.stringify(ctx.eventWindows_())), [{ id: 'anniversary', start: '2026-11-01', end: '2026-11-03' }]);
-let cfg = JSON.parse(ctx.doGet({ parameter: { action: 'config' } }).content);
+let cfg = get({ action: 'config' });
 assert.equal(cfg.eventWindows.length, 1); assert.deepEqual(cfg.disabledEvents, []);
 sheets.Settings.data.find(r => r[0] === 'DisabledEvents')[1] = 'Halloween， aprilfools';
-cfg = JSON.parse(ctx.doGet({ parameter: { action: 'config' } }).content);
+cfg = get({ action: 'config' });
 assert.deepEqual(cfg.disabledEvents, ['halloween', 'aprilfools']);
 // shared calendar logic (js/calendar.js)
 const cal = require('../js/calendar.js');
@@ -198,4 +200,26 @@ setSetting('ClassCounts', 'J1:12, J2:2, J3:12, S1AC:4, S1S:6, S2AC:4, S2S:6, S3A
 assert(post({ action: 'me', token: tok2 }).player.needsClass, 'class no longer exists');
 setSetting('ClassCounts', 'J1:12, J2:12, J3:12, S1AC:4, S1S:6, S2AC:4, S2S:6, S3AC:4, S3S:6');
 setSetting('SchoolYear', '');
+
+// ---------- busy server: Google retries, lock queue, config cache ----------
+ctx.__googleBusy = 2; ctx.__fetches = 0;
+r = post({ action: 'login', idToken: 'fake:stu1@foonyew.edu.my' }); assert(r.ok && r.player, 'login after 2 busy answers from Google');
+assert.equal(ctx.__fetches, 3, 'retried Google twice');
+ctx.__googleBusy = 99;
+r = post({ action: 'login', idToken: 'fake:stu1@foonyew.edu.my' }); assert.equal(r.error, 'google_busy'); ctx.__googleBusy = 0;
+r = post({ action: 'login', idToken: 'bad' }); assert.equal(r.error, 'bad_token', 'a really bad token is not retried');
+ctx.__lockBusy = true;
+r = post({ action: 'login', idToken: 'fake:stu1@foonyew.edu.my' }); assert(r.ok, 'sign-in needs no lock: ' + JSON.stringify(r).slice(0, 120));
+r = post({ action: 'me', token: tok }); assert(r.ok, 'me needs no lock');
+r = post({ action: 'submitScore', token: tok, result: res(30, 95, 'Normal', [], 10) }); assert.equal(r.error, 'busy', 'saving waits for the lock');
+sheets.CoinGifts.data.push(['stu1@foonyew.edu.my', 3, 'busy test']);
+r = post({ action: 'me', token: tok }); assert.equal(r.error, 'busy', 'a new gift needs the lock');
+ctx.__lockBusy = false;
+r = post({ action: 'me', token: tok }); assert(r.ok && r.gift === 3, 'gift arrives once the lock is free');
+let cfgA = rawGet({ action: 'config' });
+setSetting('LeaderboardMinAccuracy', '55');
+assert.equal(rawGet({ action: 'config' }).minAccuracy, cfgA.minAccuracy, 'config served from cache');
+ctx.setup(); // running setup clears the cached config
+assert.equal(rawGet({ action: 'config' }).minAccuracy, 55);
+setSetting('LeaderboardMinAccuracy', '80');
 console.log('ALL UNIT TESTS PASSED');
