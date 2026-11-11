@@ -334,13 +334,15 @@
 
 基地画面「多人连线」下面的 **📝 TYPING TEST** 按钮会打开一个计时打字测验：没有敌人、道具和连击，每个学生用同样的方式测。所有人都可以**练习**（1 分钟，不记录）；**正式测验**要用学校账号登入，而且老师开了测验代号。
 
-**两个打字游戏共用一个测验。** 开一个 Google Sheet 给测验用（例如「Typing Test」），把它的 ID（网址里 `/d/` 和 `/edit` 中间那串）填进**两个游戏** Settings 分页的 `TestSheetId`，然后在两个游戏的 Apps Script 各执行一次 `setup`，再部署新版本。`setup` 会在测验试算表加三个分页：
+**每个游戏有自己的测验。** 测验分页放在这个游戏自己的试算表里（`TestSheetId` 留空）：用钢弹开的测验，成绩就记在钢弹的试算表；用数码宝贝开的，就记在数码宝贝的。Apps Script 换上新的 Code.gs 后执行一次 `setup`（或等第一个学生打开测验时自动建立），会加三个分页：
 
 | 分页 | 内容 |
 |---|---|
 | `TestSettings` | `TestCode`（留空 = 没有测验；换新代号 = 新的一次测验，每人重新有机会）、`TestMinutes`（5）、`TestAttempts`（2，取最高分）、`TestWordBank`（everyday）、`TestFullWPM`（各年段几 Net WPM 满分，最低 40）、`TestPassAccuracy`（85）、`TestClasses`（留空 = 所有人，或例如 `J2, S1S2`） |
 | `TestAttempts` | 每次测验一行：班级、座号、姓名、游戏、状态（started / finished / left page）、WPM、准确率、Net WPM、分数 |
 | `TestResults` | 每个学生每个测验一行：用了几次、**最高分**——抄这个进分数表 |
+
+（可选）想让两个游戏共用同一份测验和成绩，就把同一份试算表的 ID 填进两个游戏 Settings 分页的 `TestSheetId`。
 
 测验方式：照顺序打单字，每个字打完按空白键。按错键算错，光标会等到按对为止。同一个测验代号，每个人（两个游戏都一样）拿到同样的单字、同样的顺序。
 

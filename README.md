@@ -334,13 +334,15 @@ The game has **18 festival events** and switches them on by itself — you don't
 
 The **📝 TYPING TEST** button (under MULTIPLAYER) opens a plain, timed typing test: no enemies, items or combos, so every student is measured the same way. Anyone can **practise** (1 minute, not saved). A **real test** needs a school sign-in and an open test code.
 
-**Both typing games share one test.** Make one Google Sheet for the test (for example "Typing Test"), copy its ID (the part of the URL between `/d/` and `/edit`) into the `TestSheetId` row of the **Settings** tab of *both* games, then run `setup` once in each game's Apps Script and deploy a new version. `setup` adds three tabs to the test sheet:
+**Each game has its own test.** The test tabs live in this game's own spreadsheet (leave `TestSheetId` blank): a test opened in one game is recorded in that game's sheet only. After pasting the new Code.gs, run `setup` once (or let the first student who opens the test create them). It adds three tabs:
 
 | Tab | What it is |
 |---|---|
 | `TestSettings` | `TestCode` (blank = no test; a new code = a new test, everybody gets new attempts), `TestMinutes` (5), `TestAttempts` (2, the best counts), `TestWordBank` (everyday), `TestFullWPM` (Net WPM for full marks per form, never below 40), `TestPassAccuracy` (85), `TestClasses` (blank = everyone, or e.g. `J2, S1S2`) |
 | `TestAttempts` | One row per attempt: class, seat, name, game, status (started / finished / left page), WPM, accuracy, Net WPM, score |
 | `TestResults` | One row per student and test: attempts used and the **best score** — copy this into the mark book |
+
+(Optional) To make both games share one test and one set of results, put the same spreadsheet ID in the `TestSheetId` row of both games' Settings tab.
 
 How the test works: the student types the words in order and presses SPACE after each word. A wrong key is a mistake and the cursor waits for the right key. Everyone gets the same words in the same order for one test code (in both games).
 
