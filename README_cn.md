@@ -246,6 +246,29 @@
 | TWIN DRIVE | 00 主角机（双炉） | 1100 | 5 | 必杀：连续 6 字 → 冻结 6 秒，道具 ×1.2 |
 | SERAPH ZERO | 飞翼零式风格 | 1200 | 4 | 天使羽翼；必杀：连续 5 字 → 击落 3 个目标 |
 
+### 觉醒和连击奖励
+
+- **连续打对 20 个字：机体觉醒！** 每架机体都有自己的觉醒，参考它的作品设计。只是外观，打错 3 次就会结束。
+- **连击 25 / 50 / 100：** 机体送你一个道具（每种最多 3 个）。
+
+| 机体 | 觉醒 | 画面 | 连击道具 |
+|---|---|---|---|
+| VANGUARD | NEWTYPE FLASH | 头部闪出新人类闪电，眼睛变白 | 🛡️ |
+| RED COMET | THREE TIMES FASTER | 红色残影跟着机体 | 💣 |
+| AILE STRIKER | SEED MODE | 种子爆裂，紫色碎片飘落 | 🛡️ |
+| CRIMSON AEGIS | SCYLLA OVERCHARGE | 胸口炮发出白热光，冒出热气 | 💣 |
+| OVER FLAG | GRAHAM MANEUVER | 机翼拉出飞机云，不时翻滚 | ❄️ |
+| ZENITH | BIO-SENSOR | 粉紫色气场 + 巨大光剑 | ❄️ |
+| SOVEREIGN | FUNNEL STORM | 六个浮游炮绕着机体飞 | 💣 |
+| BLADE ANGEL | TRANS-AM | 全身变红发光，喷出红色粒子 | ❄️ |
+| LIBERTY | GOLDEN FULL BURST | 羽翼全开，骨架变金色 | 💣 |
+| FATE | WINGS OF LIGHT | 巨大的光之翼 | 🛡️ |
+| SCARLET BARON | RED COMET REBORN | 金边发光 + 背后金色光环 | 💣 |
+| MONOCEROS | AWAKENED PSYCHO-FIELD | 独角张开，骨架发绿光 | ❄️ |
+| HALO NU | AXIS SHOCK | 翠绿色冲击波一圈圈扩散 | 🛡️ |
+| TWIN DRIVE | TRANS-AM BURST | 绿色 GN 粒子风暴 | ❄️ |
+| SERAPH ZERO | ZERO SYSTEM | 羽翼展开、眼睛闪光、羽毛飘落 | 💣 |
+
 ### 等级、徽章、涂装和战场
 
 - **驾驶员等级**：每次任务都会获得 XP（击坠、Boss、关卡和打字速度都算），最高 50 级。
@@ -306,6 +329,27 @@
 - 各班最常打错的 20 个单字
 
 ---
+
+## 打字测验（打分数）
+
+基地画面「多人连线」下面的 **📝 TYPING TEST** 按钮会打开一个计时打字测验：没有敌人、道具和连击，每个学生用同样的方式测。所有人都可以**练习**（1 分钟，不记录）；**正式测验**要用学校账号登入，而且老师开了测验代号。
+
+**两个打字游戏共用一个测验。** 开一个 Google Sheet 给测验用（例如「Typing Test」），把它的 ID（网址里 `/d/` 和 `/edit` 中间那串）填进**两个游戏** Settings 分页的 `TestSheetId`，然后在两个游戏的 Apps Script 各执行一次 `setup`，再部署新版本。`setup` 会在测验试算表加三个分页：
+
+| 分页 | 内容 |
+|---|---|
+| `TestSettings` | `TestCode`（留空 = 没有测验；换新代号 = 新的一次测验，每人重新有机会）、`TestMinutes`（5）、`TestAttempts`（2，取最高分）、`TestWordBank`（everyday）、`TestFullWPM`（各年段几 Net WPM 满分，最低 40）、`TestPassAccuracy`（85）、`TestClasses`（留空 = 所有人，或例如 `J2, S1S2`） |
+| `TestAttempts` | 每次测验一行：班级、座号、姓名、游戏、状态（started / finished / left page）、WPM、准确率、Net WPM、分数 |
+| `TestResults` | 每个学生每个测验一行：用了几次、**最高分**——抄这个进分数表 |
+
+测验方式：照顺序打单字，每个字打完按空白键。按错键算错，光标会等到按对为止。同一个测验代号，每个人（两个游戏都一样）拿到同样的单字、同样的顺序。
+
+分数怎么算：
+- WPM = 打对的键（字母和空白键）÷ 5 ÷ 分钟。准确率 = 打对的键 ÷ 全部按键。**Net WPM = WPM × 准确率。**
+- 分数：Net 10 WPM = 40 分，直线上升到该年段的**满分速度 = 100 分**（预设初一、初二 40，初三和高中 45）。Net 10 WPM 以下：每 1 WPM 4 分。
+- 准确率低于 `TestPassAccuracy`（85%），该次分数减半。
+- 切换到别的分页或视窗，该次测验马上结束（照完整时间算速度）。关掉或重新整理网页，该次机会就用掉了。学生真的有状况，把 `TestAttempts` 里那一行删掉，就还他一次机会。
+- 贴上或自动完成的字不算。超过 220 WPM 会被拒绝。
 
 ## 班级、新学年和校外玩家
 

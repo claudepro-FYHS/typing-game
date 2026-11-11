@@ -408,8 +408,11 @@ body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); bo
           <li>Destroyed enemies may drop items: <kbd>1</kbd> 💣 clear screen, <kbd>2</kbd> ❄️ freeze 5 s, <kbd>3</kbd> 🛡️ shield.</li>
           <li>Boss: type its word to damage it. Type the words on its missiles to shoot them down!</li>
           <li>Many mechs have a special move: type words in a row to charge it, then press <kbd>Space</kbd>.</li>
+          <li>Type 20 words in a row and your mech AWAKENS (every mech has its own awakening)! It ends after 3 mistakes.</li>
+          <li>Combo 25 / 50 / 100: your mech gives you its combo item (💣, ❄️ or 🛡️, up to 3).</li>
           <li>Multiplayer: anyone can shoot any enemy — whoever finishes the word first gets the points!</li>
         </ul>
+        <p class="muted small" style="margin:4px 0 0">Game version <span id="app-version"></span></p>
       </details>
       <div class="row small" style="margin-top:6px">
         <button class="btn ghost" id="btn-edit-profile">EDIT PROFILE</button>
@@ -574,18 +577,22 @@ body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); bo
 
 <div class="modal" id="modal"><div class="card"><div id="modal-body"></div><div class="row" style="justify-content:flex-end;margin-top:12px" id="modal-actions"><button class="btn ghost" id="btn-modal-close" style="flex:0 0 auto">CLOSE</button></div></div></div>
 
-<script src="config.js"></script>
-<script src="words.js"></script>
-<script src="meanings.js"></script>
-<script src="lib/three.min.js"></script>
-<script src="models.js"></script>
-<script src="lib/peerjs.min.js"></script>
-<script src="js/core.js"></script>
-<script src="js/calendar.js"></script>
-<script src="js/progress.js"></script>
-<script src="js/scene.js"></script>
-<script src="js/game.js"></script>
-<script src="js/net.js"></script>
-<script src="js/pages.js"></script>
+<!-- APP_VERSION: change it (here and in every ?v= below) whenever the game changes, so browsers
+     load the new files instead of old copies from their cache. -->
+<script>window.APP_VERSION = "2026-11-11";</script>
+<script src="config.js?v=2026-11-11"></script>
+<script src="words.js?v=2026-11-11"></script>
+<script src="meanings.js?v=2026-11-11"></script>
+<script src="lib/three.min.js?v=2026-11-11"></script>
+<script src="models.js?v=2026-11-11"></script>
+<script src="lib/peerjs.min.js?v=2026-11-11"></script>
+<script src="js/core.js?v=2026-11-11"></script>
+<script src="js/calendar.js?v=2026-11-11"></script>
+<script src="js/progress.js?v=2026-11-11"></script>
+<script src="js/scene.js?v=2026-11-11"></script>
+<script src="js/game.js?v=2026-11-11"></script>
+<script src="js/net.js?v=2026-11-11"></script>
+<script src="js/exam.js?v=2026-11-11"></script>
+<script src="js/pages.js?v=2026-11-11"></script>
 </body>
 </html>

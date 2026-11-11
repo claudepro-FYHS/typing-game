@@ -28,6 +28,12 @@ http.createServer((req, res) => {
     ctx.__lockBusy = u.searchParams.get('lock') === '1';
     res.end('ok'); return;
   }
+  // typing test: change a TestSettings value / read the TestAttempts + TestResults tabs
+  if (u.pathname === '/__testset') {
+    ctx.setupTest_(); sheets.TestSettings.data.find(r => r[0] === u.searchParams.get('k'))[1] = u.searchParams.get('v');
+    ctx.CacheService.getScriptCache().remove('testcfg'); ctx.CacheService.getScriptCache().remove('config'); res.end('ok'); return;
+  }
+  if (u.pathname === '/__testdata') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ attempts: (sheets.TestAttempts || {}).data, results: (sheets.TestResults || {}).data })); return; }
   if (u.pathname === '/__fail') { global.failSubmit = u.searchParams.get('on') === '1'; res.end('ok'); return; }
   let p = u.pathname.startsWith('/__t/') ? path.join(__dirname, u.pathname.slice(5)) : path.join(ROOT, u.pathname === '/' ? 'index.html' : u.pathname);
   if (!fs.existsSync(p)) { res.writeHead(404); return res.end(); }

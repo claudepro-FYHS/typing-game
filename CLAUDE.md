@@ -33,7 +33,9 @@ A 3D English typing game for Foon Yew High School (Malaysia). Students sign in w
 | `apps-script/Code.gs` | The whole backend. The teacher pastes it into Apps Script. |
 | `tests/` | Unit tests (backend in Node) and browser tests (Playwright). See **Testing**. |
 
-Script order: `config.js, words.js, meanings.js, lib/three.min.js, models.js, lib/peerjs.min.js, js/core.js, js/calendar.js, js/progress.js, js/scene.js, js/game.js, js/net.js, js/pages.js`. Everything is plain global scripts (no modules), so functions are shared through globals.
+**Cache busting:** GitHub Pages lets browsers cache files for 10 minutes, so `index.html` loads every script as `file.js?v=APP_VERSION`. When you change the game, put a new date in `window.APP_VERSION` **and** in every `?v=` in index.html (they must match; a unit test checks). The version is shown under *How to play*.
+
+Script order: `config.js, words.js, meanings.js, lib/three.min.js, models.js, lib/peerjs.min.js, js/core.js, js/calendar.js, js/progress.js, js/scene.js, js/game.js, js/net.js, js/exam.js, js/pages.js`. Everything is plain global scripts (no modules), so functions are shared through globals.
 
 ## Game engine (js/game.js)
 
@@ -45,7 +47,21 @@ Event-sourced, so solo and multiplayer share one code path:
 - Words are dealt from shuffle-bag decks by length (`drawWord`). Words on screen never share a first letter, so the first key picks the target.
 - Enemies pick a victim with `pickVictim()` so every player is attacked evenly.
 - Stages: kill `killsGoal()` enemies, then a boss. Festival bosses appear on odd stages during a festival. Normal bosses unlock by pilot level (`bossPoolSize`).
+- The boss can be typed as soon as it appears (no mistakes while it flies in).
+- **Awakening** (`AWAKEN` + `buildAwaken`/`animateAwaken` in models.js): 20 words in a row sets `G.awakened` (local player only, looks only) until 3 mistakes (`AWAKE_MISSES`); `p.anim.awake` drives it. Each of the 15 mechs has its own effect taken from its series (afterimages, Trans-Am tint, wings of light, funnels…). Effects are built once per mech, hidden, and faded in; material swaps (`swapper`) only touch that mech's meshes, because `MS()` materials are shared between mechs. The hangar preview shows it 6 s out of every 14 s. Afterimages are `buildMech(def, null, true)` (plain: no effects of their own).
+- **Combo reward:** every mech has a `comboItem`; combo 25/50/100 gives one (max 3) — `requestComboItem` → host `grantComboItem`, net message `combo`.
 - Games under 20 seconds are not uploaded. A failed upload is kept in `mst_pending` and retried later; the result screen always shows.
+
+## Typing test (js/exam.js + "Typing test" in Code.gs)
+
+The graded typing test is **shared with the other typing game** (Mecha Strike Typer / Digi Monster Typer): `js/exam.js`, the "Typing test" block at the end of `apps-script/Code.gs`, `tests/unit-test-mode.js` and `tests/e2e-exam.js` must stay identical in both repos (only `GAME_TITLE` in Code.gs differs). Change both repos together.
+
+- `exam.js` adds its own screen, CSS and the 📝 TYPING TEST button (after `#btn-multi`), so index.html only loads the script. It uses globals from core.js and keeps out of the game engine (`G`, `typer`): the test is a plain timed word stream, no enemies.
+- Words: `seededWords(code, bank, n)` — a seeded shuffle bag, so one test code gives everyone the same words in the same order, in both games (the `everyday` bank is identical in both words.js; keep it so).
+- Typing: letters must match, SPACE ends a word, a wrong key is an error and does not advance. WPM = correct keys (letters + spaces) / 5 / minutes; Net WPM = WPM × accuracy. Input is one character per `input` event; pasted / multi-character input is ignored.
+- Server: `testInfo` (read only), `testStart` / `testFinish` (lock). Settings live in a shared spreadsheet (`TestSheetId` setting; blank = this one) in the `TestSettings` tab, read through `testConfig_()` (cached 30 s). `testFinish` refuses a finish earlier than the test time unless `left` (student left the page; still scored over the full time), rejects > 220 WPM, and computes the score (`testScore_`: net 10 = 40, linear to 100 at the form's `TestFullWPM`, never below 40; accuracy under `TestPassAccuracy` halves). `TestResults` holds the best attempt per student and code.
+- A started attempt that is never finished counts as used (reloading the page can't buy another try). The teacher gives an attempt back by deleting its `TestAttempts` row.
+- UI text stays English.
 
 ## Backend (apps-script/Code.gs)
 
@@ -98,6 +114,9 @@ node run.js e2e-festivals gallery   # just some of them
 | Test | Covers |
 |---|---|
 | `unit.js` | Login, tokens, profiles, nickname filter, scores, coin cap, shop, admins, gifts, XP/badges/streaks, events config, calendar rules, class codes, new school year, outside accounts |
+| `unit-test-mode.js` | Typing test backend: score formula, full-marks speed per form, attempts shared by two games through one test sheet, too early / left page / too fast, class limit, broken TestSheetId |
+| `e2e-exam.js` | Typing test page: guest practice, school test (1 minute), paste ignored, leaving the page, attempt limit, phone |
+| `e2e-awaken.js` | Awakening of all 15 mechs in the hangar (`aw-<mech>.png`), awakening and combo reward in battle, 3 mistakes end it |
 | `e2e-classes.js` | Form + class pickers (phone), new school year, outside Google account, class battle groups, `AllowOtherAccounts = NO` |
 | `e2e-gameplay.js` | Guest hangar, paint shop, battlefields, badges, combo tiers, revenge words, festival boss, slow-mo, share card, class battle board |
 | `e2e-phone-school.js` | Phone layout, school sign-in and profile, full game, titles, leaderboard |

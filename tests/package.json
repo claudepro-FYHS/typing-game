@@ -3,9 +3,9 @@
   "private": true,
   "description": "Tests for Mecha Strike Typer (see ../CLAUDE.md)",
   "scripts": {
-    "unit": "node unit.js",
+    "unit": "node unit.js && node unit-test-mode.js",
     "e2e": "node run.js",
-    "test": "node unit.js && node run.js"
+    "test": "node unit.js && node unit-test-mode.js && node run.js"
   },
   "dependencies": {
     "express": "^4.22.3",

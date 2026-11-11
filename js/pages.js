@@ -132,10 +132,27 @@ function renderTeacher() {
  * ===================================================================== */
 let last = performance.now();
 const camTarget = new V3();
+/* On GRAPHICS: HIGH, measure the first seconds after the page opens (skipping the first second of
+   loading). A device that can't reach ~30 frames per second is switched to LOW. (game.js does the
+   same check again at the start of each battle.) */
+const speed = { start: 0, frames: 0, done: false, t0: performance.now() };
+function checkSpeed(now) {
+  if (speed.done || now - speed.t0 < 1000) return;
+  if (S.prefs.quality !== "high") { speed.done = true; return; }
+  if (!speed.start) { speed.start = now; return; }
+  speed.frames++;
+  if (now - speed.start < 1500) return;
+  speed.done = true;
+  if ((now - speed.start) / speed.frames > 1000 / 30) {
+    S.prefs.quality = "low"; savePrefs(); applyQuality();
+    $("#btn-quality").textContent = "GRAPHICS: LOW";
+  }
+}
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (!renderer || mode === "idle" || document.hidden) return;
+  checkSpeed(now);
   const t = now / 1000;
   const speed = mode === "game" && !G.paused ? (G.me && G.me.freezeT > 0 ? 8 : 40) : 4;
   const a = stars.geometry.attributes.position;
@@ -176,6 +193,7 @@ function frame(now) {
       if (cyc > 3 && cyc < 5) MODELS.aimMech(previewMech, previewAnim, new V3(Math.sin(t) * 3, 3, 12).applyMatrix4(previewMech.matrixWorld));
       else MODELS.aimMech(previewMech, previewAnim, null);
       if (cyc > 3.4 && cyc < 5 && Math.random() < 0.08) MODELS.fireMech(previewAnim, Math.random() < 0.3);
+      previewAnim.awake = t % 14 > 8; // show off the awakening for 6 s every 14 s
       MODELS.animateMech(previewMech, previewAnim, dt);
     }
   }
@@ -185,6 +203,7 @@ function frame(now) {
 /* =====================================================================
  *  BOOT
  * ===================================================================== */
+$("#app-version").textContent = window.APP_VERSION || "dev";
 applyQuality();
 addEventBank();
 setEnvironment("deep", activeEvent() ? activeEvent().id : null);

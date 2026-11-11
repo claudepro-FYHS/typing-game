@@ -333,8 +333,331 @@ const PACKS = {
   },
 };
 
+/* =====================================================================
+ *  AWAKENING (20 words in a row, ends after 3 mistakes). Every mech has
+ *  its own awakening, taken from the series it is styled after. Looks
+ *  only: it does not change the game rules.
+ *  buildAwaken() makes the hidden effects once per mech; animateMech fades
+ *  them in while anim.awake is set. Effect materials belong to one mech
+ *  (not cached) because their opacity is animated.
+ *  comboItem: the item a combo of 25 / 50 / 100 gives (max 3).
+ * ===================================================================== */
+const AWAKEN = {
+  starter:    { name: "NEWTYPE FLASH", color: "#dff3ff", desc: "Newtype lightning flashes around the head" },
+  redcomet:   { name: "THREE TIMES FASTER", color: "#ff5a6a", desc: "Red afterimages follow the mech" },
+  aile:       { name: "SEED MODE", color: "#c58bff", desc: "A seed bursts and violet shards fall" },
+  aegis:      { name: "SCYLLA OVERCHARGE", color: "#ffb04a", desc: "The chest cannon glows white-hot" },
+  flag:       { name: "GRAHAM MANEUVER", color: "#bff4ff", desc: "Contrails and barrel rolls" },
+  zenith:     { name: "BIO-SENSOR", color: "#ff7ae0", desc: "A pink aura and a giant beam saber" },
+  sovereign:  { name: "FUNNEL STORM", color: "#ff5a7a", desc: "Six funnels circle the mech" },
+  bladeangel: { name: "TRANS-AM", color: "#ff3060", desc: "The whole mech glows red" },
+  liberty:    { name: "GOLDEN FULL BURST", color: "#ffd34d", desc: "Wings spread wide, the frame turns gold" },
+  fate:       { name: "WINGS OF LIGHT", color: "#ff7ab8", desc: "Huge wings of light open" },
+  baron:      { name: "RED COMET REBORN", color: "#ffcf40", desc: "Golden trim and a Neo-Zeon halo" },
+  monoceros:  { name: "AWAKENED PSYCHO-FIELD", color: "#5dff9a", desc: "The horn opens, the frame glows green" },
+  nu:         { name: "AXIS SHOCK", color: "#4dffa8", desc: "Emerald shock waves pulse out" },
+  twin:       { name: "TRANS-AM BURST", color: "#7dffb3", desc: "A storm of green GN particles" },
+  seraph:     { name: "ZERO SYSTEM", color: "#e8fff0", desc: "Wings open wide, feathers fall" },
+};
+const COMBO_ITEM = {
+  starter: "shield", redcomet: "bomb", aile: "shield", aegis: "bomb", flag: "freeze", zenith: "freeze", sovereign: "bomb",
+  bladeangel: "freeze", liberty: "bomb", fate: "shield", baron: "bomb", monoceros: "freeze", nu: "shield", twin: "freeze", seraph: "bomb",
+};
+for (const m of MECHS) { m.awaken = AWAKEN[m.id]; m.comboItem = COMBO_ITEM[m.id]; }
+
+function fxMat(color, op, side) { return new T.MeshBasicMaterial({ color, transparent: true, opacity: op == null ? 0.8 : op, blending: ADD, depthWrite: false, side: side ? T.DoubleSide : T.FrontSide }); }
+const fxSphere = () => G("fxSphere", () => new T.SphereGeometry(1, 16, 12));
+const fxDot = () => G("fxDot", () => new T.SphereGeometry(1, 6, 4));
+const fxPlane = () => G("fxPlane", () => new T.PlaneGeometry(1, 1));
+/* a small pool of glowing particles (positions are local to the mech) */
+function particles(parent, color, n, size, geo, side) {
+  const mat = fxMat(color, 0.9, side), g = geo || fxDot(), list = [];
+  for (let i = 0; i < n; i++) { const m = new T.Mesh(g, mat); m.visible = false; parent.add(m); list.push({ m, v: new T.Vector3(), life: 0, max: 1, s: size, spin: 0, orb: null }); }
+  let next = 0;
+  const take = (life, s) => { const p = list[next]; next = (next + 1) % n; p.life = p.max = life; p.s = s || size; p.m.visible = true; p.orb = null; p.spin = 0; return p; };
+  return {
+    mat,
+    emit(x, y, z, vx, vy, vz, life, s, spin) { const p = take(life, s); p.m.position.set(x, y, z); p.v.set(vx, vy, vz); p.spin = spin || 0; p.m.rotation.set(Math.random() * 3, Math.random() * 3, 0); },
+    orbit(a, r, y, w, vy, life, s) { const p = take(life, s); p.orb = { a, r, y, w, vy }; },
+    update(dt) {
+      for (const p of list) {
+        if (p.life <= 0) continue;
+        p.life -= dt;
+        if (p.life <= 0) { p.m.visible = false; continue; }
+        if (p.orb) { const o = p.orb; o.a += o.w * dt; o.y += o.vy * dt; p.m.position.set(Math.cos(o.a) * o.r, o.y, Math.sin(o.a) * o.r); }
+        else p.m.position.addScaledVector(p.v, dt);
+        if (p.spin) { p.m.rotation.z += p.spin * dt; p.m.rotation.x += p.spin * 0.6 * dt; }
+        p.m.scale.setScalar(p.s * Math.min(1, p.life / p.max * 1.6));
+      }
+    },
+    hide() { for (const p of list) { p.life = 0; p.m.visible = false; } },
+  };
+}
+/* swaps the material of the mech's own meshes while awake (other mechs that share a material are not touched) */
+function swapper(rig, test, make) {
+  const items = [], cache = new Map();
+  rig.root.traverse(o => {
+    if (!o.isMesh || !test(o.material)) return;
+    for (let q = o; q; q = q.parent) if (q.userData.isFx) return;
+    items.push(o);
+  });
+  for (const o of items) { if (!cache.has(o.material)) cache.set(o.material, make(o.material)); o.userData.baseMat = o.material; o.userData.altMat = cache.get(o.material); }
+  let on = false;
+  return (want) => { if (want === on) return; on = want; for (const o of items) o.material = on ? o.userData.altMat : o.userData.baseMat; };
+}
+
+function buildAwaken(def, rig, M) {
+  const info = AWAKEN[def.id]; if (!info) return null;
+  const fx = new T.Group(); fx.userData.isFx = true; fx.visible = false; rig.root.add(fx);
+  const A = { fx, on: false, k: 0, t: 0, swaps: [], parts: [], extra: [], wingSpread: 0, ntd: false, tick: null, onStart: null, burstT: 0 };
+  const R = Math.random, V = (x, y, z) => new T.Vector3(x, y, z);
+  const sw = (test, make) => A.swaps.push(swapper(rig, test, make));
+  const tint = (col, amt, emi, ei, test) => sw(test || (m => m.isMeshStandardMaterial), m => { const c = m.clone(); c.color = m.color.clone().lerp(new T.Color(col), amt); c.emissive = new T.Color(emi); c.emissiveIntensity = ei; return c; });
+  const visor = (col) => { let mat = null; sw(m => m === M.visor, () => (mat = new T.MeshBasicMaterial({ color: col }))); return () => mat; };
+  const glowTo = (col) => sw(m => m.isMeshBasicMaterial && m.blending === ADD && m !== rig.flash.material, () => fxMat(col, 0.9));
+  const P = (col, n, size, geo, side) => { const p = particles(fx, col, n, size, geo, side); A.parts.push(p); return p; };
+  const mesh = (geo, mat, x, y, z, parent) => { const m = new T.Mesh(geo, mat); m.position.set(x || 0, y || 0, z || 0); (parent || fx).add(m); return m; };
+  const extra = (o, parent) => { o.userData.isFx = true; o.visible = false; parent.add(o); A.extra.push(o); return o; };
+  const toFx = (obj, v) => fx.worldToLocal(obj.localToWorld(v)); // a point on a joint -> mech-local
+  // the flash when the mech awakens
+  const burst = mesh(fxSphere(), fxMat(new T.Color(info.color), 0.8), 0, 2.5, 0); burst.visible = false;
+  A.burstMesh = burst;
+
+  switch (def.id) {
+    case "starter": { // UC hero: Newtype flash - lightning around the head, white eyes
+      visor(0xffffff);
+      const aura = mesh(fxSphere(), fxMat(0xdff3ff, 0.1), 0, 2.3, 0); aura.scale.set(1.9, 2.5, 1.6);
+      const spark = mesh(fxSphere(), fxMat(0xffffff, 0.9), 0, 3.35, 0.15);
+      const bolts = [0, 1, 2].map(() => {
+        const g = new T.BufferGeometry(); g.setAttribute("position", new T.BufferAttribute(new Float32Array(8 * 3), 3));
+        const l = new T.Line(g, new T.LineBasicMaterial({ color: 0xcfeeff, transparent: true, blending: ADD, depthWrite: false })); fx.add(l); return l;
+      });
+      let next = 0, flashT = 0;
+      A.tick = (dt, k, t) => {
+        aura.material.opacity = (0.07 + 0.05 * Math.sin(t * 5)) * k;
+        next -= dt; flashT -= dt;
+        if (next <= 0 && A.on) {
+          next = 0.5 + R() * 0.9; flashT = 0.18;
+          for (const l of bolts) {
+            const a = l.geometry.attributes.position, ang = R() * Math.PI * 2, el = (R() - 0.3) * 1.2;
+            let x = 0, y = 3.35, z = 0.15;
+            for (let i = 0; i < 8; i++) { a.setXYZ(i, x, y, z); const d = 0.25 + i * 0.06; x += Math.cos(ang) * d + (R() - 0.5) * 0.35; y += el * d * 0.6 + (R() - 0.5) * 0.35; z += Math.sin(ang) * d * 0.5 + (R() - 0.5) * 0.2; }
+            a.needsUpdate = true;
+          }
+        }
+        for (const l of bolts) { l.visible = flashT > 0; l.material.opacity = k; }
+        spark.visible = flashT > 0; spark.scale.setScalar(0.1 + flashT * 0.6);
+      };
+      break;
+    }
+    case "redcomet": { // UC rival: three times faster - red afterimages
+      visor(0xff7ab8); glowTo(0xff4466);
+      const J = ["pelvis", "torso", "head", "shR", "elR", "handR", "shL", "elL", "hipR", "kneeR", "ankleR", "hipL", "kneeL", "ankleL"];
+      const ghosts = [0.4, 0.2].map(op => {
+        const g = buildMech(def, null, true), mat = fxMat(0xff3344, op);
+        g.traverse(o => { if (o.isMesh) o.material = mat; });
+        g.userData.mat = mat; g.userData.op = op; fx.add(g); return g;
+      });
+      const hist = [];
+      A.tick = (dt, k, t) => {
+        hist.unshift({ y: rig.root.position.y, r: J.map(j => rig[j].rotation.clone()) }); if (hist.length > 20) hist.pop();
+        ghosts.forEach((g, i) => {
+          const h = hist[Math.min(hist.length - 1, (i + 1) * 5)], gr = g.userData.rig;
+          J.forEach((j, n) => gr[j].rotation.copy(h.r[n]));
+          g.position.set(Math.sin(t * 3 + i * 2) * 0.45 * (i + 1), h.y - rig.root.position.y, -0.8 * (i + 1));
+          g.userData.mat.opacity = g.userData.op * k;
+        });
+      };
+      break;
+    }
+    case "aile": { // SEED hero: SEED mode - a seed bursts, violet shards fall
+      visor(0xc77dff); glowTo(0xb36bff);
+      const seed = mesh(fxSphere(), fxMat(0xd7a8ff, 0.9), 0, 3.0, 0.7); seed.visible = false;
+      const shards = P(0xc58bff, 40, 0.1, G("fxOct", () => new T.OctahedronGeometry(1, 0)));
+      let seedT = 0;
+      A.onStart = () => { seedT = 0.7; for (let i = 0; i < 16; i++) { const a = R() * 6.28, b = R() * 3.14; shards.emit(0, 3.0, 0.7, Math.cos(a) * Math.sin(b) * 4, Math.cos(b) * 4, Math.sin(a) * Math.sin(b) * 4, 0.9, 0.12, 6); } };
+      A.tick = (dt, k) => {
+        seedT -= dt; seed.visible = seedT > 0;
+        if (seedT > 0) { seed.scale.setScalar(0.2 + (0.7 - seedT) * 2.4); seed.material.opacity = seedT / 0.7 * 0.9; }
+        if (A.on && R() < dt * 12) shards.emit((R() - 0.5) * 3.2, 4.6 + R(), (R() - 0.5) * 2, 0, -1.3, 0, 2.4, 0.07, 3);
+      };
+      break;
+    }
+    case "aegis": { // SEED rival: Scylla overcharge - white-hot chest cannon, heat
+      tint(0xff6a2a, 0.15, 0xff4a10, 0.3);
+      const core = mesh(fxSphere(), fxMat(0xfff0c0, 0.95), 0, 2.55, 0.45);
+      const halo = mesh(fxSphere(), fxMat(0xff7a2a, 0.35), 0, 2.55, 0.45);
+      const heat = P(0xff8a3a, 36, 0.1);
+      A.tick = (dt, k, t) => {
+        core.scale.setScalar(0.24 + 0.06 * Math.sin(t * 14)); halo.scale.setScalar(0.6 + 0.15 * Math.sin(t * 7)); halo.material.opacity = 0.35 * k;
+        if (A.on && R() < dt * 20) heat.emit((R() - 0.5) * 1.8, 1.4 + R() * 2, (R() - 0.5) * 0.8, 0, 1.6 + R(), -0.3, 0.9, 0.08);
+      };
+      break;
+    }
+    case "flag": { // 00 rival: Graham maneuver - contrails and barrel rolls
+      visor(0xfff2a0);
+      const trail = P(0xd8f8ff, 70, 0.07), w = rig.wings[0];
+      let roll = 0, rollT = 1.2;
+      A.tick = (dt, k) => {
+        if (A.on) for (const s of [-1, 1]) { const p = toFx(w.g, V(1.3 * s, 0, 0)); trail.emit(p.x, p.y, p.z, 0, 0, -5, 0.55, 0.07); }
+        rollT -= dt; if (rollT <= 0 && A.on) { roll = 1; rollT = 3.5; }
+        if (roll > 0) { roll = Math.max(0, roll - dt / 0.8); const e = 1 - roll; rig.pelvis.rotation.z += (e * e * (3 - 2 * e)) * Math.PI * 2; }
+      };
+      break;
+    }
+    case "zenith": { // UC hero: bio-sensor - pink aura and a giant beam saber
+      const aura = mesh(fxSphere(), fxMat(0xff6ad5, 0.14), 0, 2.2, 0); aura.scale.set(1.7, 2.6, 1.5);
+      const aura2 = mesh(fxSphere(), fxMat(0xb06bff, 0.1), 0, 2.2, 0); aura2.scale.set(2.1, 3.0, 1.9);
+      const saber = extra(new T.Group(), rig.handL);
+      mesh(G("b0.12,0.5,0.12", () => new T.BoxGeometry(0.12, 0.5, 0.12)), M.dark, 0, -0.1, 0, saber);
+      const blade = mesh(G("fxBlade", () => new T.BoxGeometry(0.14, 1, 0.14)), fxMat(0xffd0f4, 0.95), 0, -2.5, 0, saber); blade.scale.y = 4.4;
+      const bladeGlow = mesh(G("fxBlade", () => new T.BoxGeometry(0.14, 1, 0.14)), fxMat(0xff5ad0, 0.35), 0, -2.5, 0, saber); bladeGlow.scale.set(3.2, 4.8, 3.2);
+      const sparks = P(0xff9ae8, 24, 0.06);
+      A.tick = (dt, k, t) => {
+        aura.material.opacity = (0.12 + 0.05 * Math.sin(t * 4)) * k; aura2.material.opacity = (0.08 + 0.05 * Math.sin(t * 3 + 1)) * k;
+        blade.scale.y = 4.4 + 0.25 * Math.sin(t * 22); bladeGlow.material.opacity = 0.35 * k;
+        if (A.on && R() < dt * 10) sparks.emit((R() - 0.5) * 2.4, 1 + R() * 3, (R() - 0.5) * 1.6, 0, 0.8, 0, 1.0, 0.06);
+      };
+      break;
+    }
+    case "sovereign": { // UC rival: funnel storm - six funnels circle the mech
+      visor(0xff7ab8);
+      const funnels = [];
+      for (let i = 0; i < 6; i++) {
+        const g = new T.Group(); fx.add(g);
+        rot(mesh(G("fxFun", () => new T.ConeGeometry(0.16, 0.7, 6)), M.accent, 0, 0, 0, g), Math.PI / 2, 0, 0);
+        const tip = mesh(fxSphere(), fxMat(0xff4466, 0.9), 0, 0, 0.4, g); tip.scale.setScalar(0.12);
+        funnels.push({ g, tip });
+      }
+      A.tick = (dt, k, t) => {
+        funnels.forEach((f, i) => {
+          const a = t * 1.5 + i * Math.PI / 3, r = 2.3 + 0.3 * Math.sin(t * 2 + i);
+          f.g.position.set(Math.cos(a) * r, 2.6 + Math.sin(a * 2 + i) * 0.9, Math.sin(a) * r * 0.75);
+          f.g.rotation.set(0, Math.PI / 2 - a, 0);
+          f.tip.scale.setScalar((0.1 + 0.08 * Math.max(0, Math.sin(t * 9 + i * 1.7))) * k);
+        });
+      };
+      break;
+    }
+    case "bladeangel": { // 00 hero: Trans-Am - the whole mech glows red
+      tint(0xff1a3a, 0.8, 0xff1f4a, 0.6); glowTo(0xff3060);
+      const gn = P(0xff4d7a, 60, 0.09);
+      A.tick = (dt) => { if (A.on && R() < dt * 45) gn.emit((R() - 0.5) * 0.8, 2.4 + (R() - 0.5) * 0.8, -0.9, (R() - 0.5) * 0.8, -0.3 + R() * 0.4, -3 - R() * 2, 0.8, 0.09); };
+      break;
+    }
+    case "liberty": { // SEED hero: golden frame and the wings spread for a full burst
+      tint(0xffc93a, 1.0, 0xffb020, 0.45, m => m === M.dark);
+      A.wingSpread = 0.9;
+      const edges = [];
+      for (const w of rig.wings) {
+        const e = extra(new T.Mesh(fxPlane(), fxMat(0x5ab8ff, 0.45, true)), w.g);
+        e.scale.set(0.8, 2.1, 1); e.position.set(0.25 * w.s, 1.0, -0.06); edges.push(e);
+      }
+      const sparkle = P(0x9fd8ff, 30, 0.06);
+      A.tick = (dt, k, t) => {
+        edges.forEach((e, i) => e.material.opacity = (0.35 + 0.15 * Math.sin(t * 6 + i)) * k);
+        if (A.on && R() < dt * 14) { const w = rig.wings[R() < 0.5 ? 0 : 1]; const p = toFx(w.g, V(0.2 * w.s, R() * 1.8, 0)); sparkle.emit(p.x, p.y, p.z, 0, -0.4, -1, 0.9, 0.06); }
+      };
+      break;
+    }
+    case "fate": { // SEED hero: wings of light
+      const layers = [];
+      for (const s of [-1, 1]) {
+        const g = extra(new T.Group(), rig.back); g.position.set(0.35 * s, 0.35, -0.45);
+        [0xff4d8a, 0xff9ad0, 0x9ad8ff].forEach((c, i) => {
+          const p = mesh(fxPlane(), fxMat(c, 0.35, true), 0, 0, -i * 0.05, g);
+          p.scale.set(1.5 - i * 0.2, 4.4 - i * 0.6, 1); p.rotation.set(0, s * 0.35, s * -(0.7 + i * 0.3));
+          p.position.set(s * (1.3 + i * 0.25), 1.2 - i * 0.2, 0); layers.push(p);
+        });
+        g.userData.s = s; layers.push(g);
+      }
+      const shimmer = P(0xffb3d9, 36, 0.07);
+      A.tick = (dt, k, t) => {
+        layers.forEach((p, i) => { if (p.material) p.material.opacity = (0.28 + 0.14 * Math.sin(t * 11 + i * 1.3)) * k; else p.rotation.y = p.userData.s * 0.15 * Math.sin(t * 2); });
+        if (A.on && R() < dt * 16) { const s = R() < 0.5 ? -1 : 1; shimmer.emit(s * (1 + R() * 2.4), 2.4 + R() * 2.4, -0.8, s * 0.3, -0.8, -0.8, 1.2, 0.07); }
+      };
+      break;
+    }
+    case "baron": { // UC rival: golden trim and a Neo-Zeon halo
+      sw(m => m === M.fin || m === M.trim, m => { const c = m.clone(); c.color = new T.Color(0xffd34d); c.emissive = new T.Color(0xffb020); c.emissiveIntensity = 0.9; return c; });
+      const halo = new T.Group(); halo.position.set(0, 3.0, -1.1); fx.add(halo);
+      const ringMat = fxMat(0xffcf40, 0.85);
+      mesh(G("fxRing", () => new T.TorusGeometry(1.15, 0.05, 6, 40)), ringMat, 0, 0, 0, halo);
+      for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; rot(mesh(G("fxSpike", () => new T.ConeGeometry(0.08, 0.45, 5)), ringMat, Math.cos(a) * 1.35, Math.sin(a) * 1.35, 0, halo), 0, 0, a - Math.PI / 2); }
+      const embers = P(0xff4a2a, 40, 0.07);
+      A.tick = (dt, k, t) => {
+        halo.rotation.z = t * 0.6; ringMat.opacity = 0.85 * k;
+        if (A.on && R() < dt * 18) embers.emit((R() - 0.5) * 2.6, 0.8 + R() * 2, (R() - 0.5) * 1.6, 0, 1.2 + R(), 0, 1.3, 0.07);
+      };
+      break;
+    }
+    case "monoceros": { // UC hero: awakened - the horn opens and the psycho-frame glows green
+      glowTo(0x5dff9a); A.ntd = true;
+      const field = mesh(fxSphere(), fxMat(0x5dff9a, 0.12), 0, 2.3, 0); field.scale.set(2.3, 2.9, 2.0);
+      const inner = mesh(fxSphere(), fxMat(0xb8ffd8, 0.08), 0, 2.3, 0); inner.scale.set(1.6, 2.2, 1.4);
+      const motes = P(0x8affc0, 36, 0.06);
+      A.tick = (dt, k, t) => {
+        field.material.opacity = (0.1 + 0.05 * Math.sin(t * 3)) * k; inner.material.opacity = (0.06 + 0.04 * Math.sin(t * 5)) * k;
+        field.scale.set(2.3 + 0.1 * Math.sin(t * 3), 2.9 + 0.1 * Math.sin(t * 3), 2.0);
+        if (A.on && R() < dt * 14) motes.orbit(R() * 6.28, 1.8 + R() * 0.6, 0.6 + R() * 3.2, 1.2 + R(), 0.3, 1.6, 0.06);
+      };
+      break;
+    }
+    case "nu": { // UC hero: Axis shock - emerald shock waves
+      const glow = mesh(fxSphere(), fxMat(0x9dffd0, 0.1), 0, 2.4, 0); glow.scale.set(1.8, 2.4, 1.6);
+      const rings = [[Math.PI / 2, 0], [Math.PI / 2 - 0.6, 0.4], [0, 0]].map(([rx, rz]) => rot(mesh(G("fxRing2", () => new T.TorusGeometry(1, 0.04, 6, 48)), fxMat(0x4dffa8, 0.6), 0, 2.4, 0), rx, 0, rz));
+      const sparkle = P(0xb8ffb0, 24, 0.06), w = rig.wings[0];
+      A.tick = (dt, k, t) => {
+        glow.material.opacity = (0.08 + 0.05 * Math.sin(t * 4)) * k;
+        rings.forEach((r, i) => { const ph = (t * 0.7 + i / 3) % 1; r.scale.setScalar(0.6 + ph * 5); r.material.opacity = (1 - ph) * 0.65 * k; });
+        if (A.on && R() < dt * 12) { const p = toFx(w.g, V(0.3 + R() * 0.4, R() * 1.4, 0)); sparkle.emit(p.x, p.y, p.z, 0.6, 0.3, -0.6, 0.9, 0.06); }
+      };
+      break;
+    }
+    case "twin": { // 00 hero: Trans-Am burst - a storm of green GN particles
+      glowTo(0x7dffb3);
+      const storm = P(0x7dffb3, 90, 0.07), pink = P(0xffb3e6, 20, 0.06);
+      A.tick = (dt) => {
+        if (!A.on) return;
+        const n = Math.floor(dt * 60 + R());
+        for (let i = 0; i < n; i++) storm.orbit(R() * 6.28, 1.6 + R() * 0.8, 0.2 + R() * 0.5, 2.5 + R(), 2.2, 1.8, 0.07);
+        if (R() < dt * 8) pink.orbit(R() * 6.28, 1.2, 1 + R() * 2, -2, 1, 1.4, 0.06);
+      };
+      break;
+    }
+    case "seraph": { // winged angel: Zero System - wings open, eyes flash, feathers fall
+      A.wingSpread = 0.8;
+      const eyes = visor(0x3cff8a);
+      const feathers = P(0xffffff, 40, 0.12, fxPlane(), true);
+      A.tick = (dt, k, t) => {
+        const m = eyes(); if (m) m.color.setHex(Math.sin(t * 9) > 0.3 ? 0xeafff2 : 0x3cff8a);
+        if (A.on && R() < dt * 10) feathers.emit((R() - 0.5) * 5, 4.4 + R(), -0.6 + (R() - 0.5), (R() - 0.5) * 0.4, -0.9, 0, 3.0, 0.14, 2);
+      };
+      break;
+    }
+  }
+  return A;
+}
+function animateAwaken(r, anim, dt) {
+  const A = r.awk; if (!A) return;
+  const want = !!anim.awake;
+  if (want && !A.on) { A.on = true; A.burstT = 0.6; if (A.onStart) A.onStart(); }
+  else if (!want && A.on) A.on = false;
+  A.k += ((A.on ? 1 : 0) - A.k) * Math.min(1, dt * 5);
+  const vis = A.on || A.k > 0.02;
+  for (const s of A.swaps) s(A.on);
+  A.fx.visible = vis; for (const e of A.extra) e.visible = vis;
+  if (!vis) { if (A.dirty) { for (const p of A.parts) p.hide(); A.dirty = false; } return; }
+  A.dirty = true; A.t += dt;
+  A.burstT = Math.max(0, A.burstT - dt);
+  A.burstMesh.visible = A.burstT > 0;
+  if (A.burstT > 0) { const e = 1 - A.burstT / 0.6; A.burstMesh.scale.setScalar(0.5 + e * 3.5); A.burstMesh.material.opacity = (1 - e) * 0.7; }
+  if (A.tick) A.tick(dt, A.k, A.t);
+  for (const p of A.parts) p.update(dt);
+}
+
 /* ---------------- the mech itself ---------------- */
-function buildMech(def, skin) {
+function buildMech(def, skin, plain) { // plain: no awakening effects (afterimages)
   const c = skin && skin.colors ? Object.assign({}, def.colors, skin.colors) : def.colors, b = def.bulk || 1;
   const ex = (skin && skin.mat) || {};
   const M = {
@@ -396,6 +719,7 @@ function buildMech(def, skin) {
   (PACKS[def.pack] || PACKS.basic)(rig.back, M, rig);
   rig.horn = rig.head.getObjectByName("horn");
   rig.ntd = rig.head.getObjectByName("ntdFins");
+  if (!plain) rig.awk = buildAwaken(def, rig, M);
   root.userData.rig = rig;
   root.userData.def = def;
   if (b !== 1) root.scale.setScalar(1);
@@ -452,11 +776,13 @@ function animateMech(mesh, anim, dt) {
   if (r.flash.visible) r.flash.scale.setScalar(0.6 + Math.random() * 0.8);
   const boost = 0.8 + Math.random() * 0.35 + rc * 0.6;
   for (const th of r.thrusters) { if (th.geometry && th.geometry.type === "TorusGeometry") th.rotation.z += dt * 4; else th.scale.y = boost; }
+  const spread = r.awk ? 1 + r.awk.wingSpread * r.awk.k : 1;
   for (const w of r.wings) {
     if (w.spin) { w.g.rotation.z += dt * 0.8; continue; }
-    w.g.rotation.z = w.base + (Math.sin(t * 1.6) * 0.06 + rc * 0.05 - v * 0.2) * w.s;
+    w.g.rotation.z = w.base * spread + (Math.sin(t * 1.6) * 0.06 + rc * 0.05 - v * 0.2) * w.s;
   }
-  if (r.horn) { const on = anim.special > 0; r.horn.visible = !on; if (r.ntd) r.ntd.visible = on; }
+  if (r.horn) { const on = anim.special > 0 || !!(r.awk && r.awk.ntd && r.awk.on); r.horn.visible = !on; if (r.ntd) r.ntd.visible = on; }
+  animateAwaken(r, anim, dt);
 }
 
 /* =====================================================================
@@ -956,5 +1282,5 @@ function animateBoss(holder, dt, time, attack, target) {
   }
 }
 
-window.MODELS = { MECHS, buildMech, newAnim, aimMech, fireMech, animateMech, ENEMY_TYPES, ENEMY_SIZES, buildEnemy, animateEnemy, BOSSES, buildBoss, animateBoss, MS, MB, GLOW };
+window.MODELS = { MECHS, AWAKEN, buildMech, newAnim, aimMech, fireMech, animateMech, ENEMY_TYPES, ENEMY_SIZES, buildEnemy, animateEnemy, BOSSES, buildBoss, animateBoss, MS, MB, GLOW };
 })();

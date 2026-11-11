@@ -246,6 +246,29 @@ The game has **18 festival events** and switches them on by itself — you don't
 | TWIN DRIVE | 00 hero (twin drives) | 1100 | 5 | Special: 6 in a row → freezes enemies for 6 s; items ×1.2 |
 | SERAPH ZERO | Winged angel style | 1200 | 4 | Angel wings; special: 5 in a row → destroys 3 targets |
 
+### Awakening and combo rewards
+
+- **20 words in a row: your mech AWAKENS.** Every mech has its own awakening, styled after its series. It is for looks only and ends after 3 mistakes.
+- **Combo 25 / 50 / 100:** your mech gives you its combo item (up to 3 of each).
+
+| Mech | Awakening | What you see | Combo item |
+|---|---|---|---|
+| VANGUARD | NEWTYPE FLASH | Newtype lightning around the head, white eyes | 🛡️ |
+| RED COMET | THREE TIMES FASTER | Red afterimages follow the mech | 💣 |
+| AILE STRIKER | SEED MODE | A seed bursts, violet shards fall | 🛡️ |
+| CRIMSON AEGIS | SCYLLA OVERCHARGE | The chest cannon glows white-hot, heat rises | 💣 |
+| OVER FLAG | GRAHAM MANEUVER | Contrails from the wings and barrel rolls | ❄️ |
+| ZENITH | BIO-SENSOR | Pink aura and a giant beam saber | ❄️ |
+| SOVEREIGN | FUNNEL STORM | Six funnels circle the mech | 💣 |
+| BLADE ANGEL | TRANS-AM | The whole mech glows red, red particles | ❄️ |
+| LIBERTY | GOLDEN FULL BURST | Wings spread wide, the frame turns gold | 💣 |
+| FATE | WINGS OF LIGHT | Huge wings of light | 🛡️ |
+| SCARLET BARON | RED COMET REBORN | Golden trim and a Neo-Zeon halo | 💣 |
+| MONOCEROS | AWAKENED PSYCHO-FIELD | The horn opens, the frame glows green | ❄️ |
+| HALO NU | AXIS SHOCK | Emerald shock waves | 🛡️ |
+| TWIN DRIVE | TRANS-AM BURST | A storm of green GN particles | ❄️ |
+| SERAPH ZERO | ZERO SYSTEM | Wings open wide, eyes flash, feathers fall | 💣 |
+
 ### Levels, badges, paint jobs and battlefields
 
 - **Pilot level:** every mission earns XP (kills, bosses, stages and typing speed). Levels go up to 50.
@@ -306,6 +329,27 @@ The game has **18 festival events** and switches them on by itself — you don't
 - The 20 words each class mistypes most often
 
 ---
+
+## Typing test (graded)
+
+The **📝 TYPING TEST** button (under MULTIPLAYER) opens a plain, timed typing test: no enemies, items or combos, so every student is measured the same way. Anyone can **practise** (1 minute, not saved). A **real test** needs a school sign-in and an open test code.
+
+**Both typing games share one test.** Make one Google Sheet for the test (for example "Typing Test"), copy its ID (the part of the URL between `/d/` and `/edit`) into the `TestSheetId` row of the **Settings** tab of *both* games, then run `setup` once in each game's Apps Script and deploy a new version. `setup` adds three tabs to the test sheet:
+
+| Tab | What it is |
+|---|---|
+| `TestSettings` | `TestCode` (blank = no test; a new code = a new test, everybody gets new attempts), `TestMinutes` (5), `TestAttempts` (2, the best counts), `TestWordBank` (everyday), `TestFullWPM` (Net WPM for full marks per form, never below 40), `TestPassAccuracy` (85), `TestClasses` (blank = everyone, or e.g. `J2, S1S2`) |
+| `TestAttempts` | One row per attempt: class, seat, name, game, status (started / finished / left page), WPM, accuracy, Net WPM, score |
+| `TestResults` | One row per student and test: attempts used and the **best score** — copy this into the mark book |
+
+How the test works: the student types the words in order and presses SPACE after each word. A wrong key is a mistake and the cursor waits for the right key. Everyone gets the same words in the same order for one test code (in both games).
+
+How it is scored:
+- WPM = correct keys (letters and spaces) ÷ 5 ÷ minutes. Accuracy = correct keys ÷ all keys. **Net WPM = WPM × accuracy.**
+- Score: Net 10 WPM = 40 points, rising in a straight line to **100 at the full-marks speed** of the student's form (default J1–J2 40, J3 and senior 45). Below 10 Net WPM: 4 points per WPM.
+- Accuracy under `TestPassAccuracy` (85 %) halves that attempt.
+- Switching to another tab or window ends the attempt (scored over the full time). Closing or reloading the page uses up the attempt. If a student had a real problem, delete that row in `TestAttempts` to give the attempt back.
+- Pasted or auto-completed text is ignored. More than 220 WPM is rejected.
 
 ## Classes, the new school year, and players from outside the school
 

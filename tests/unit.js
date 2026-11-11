@@ -200,6 +200,15 @@ setSetting('ClassCounts', 'J1:12, J2:2, J3:12, S1AC:4, S1S:6, S2AC:4, S2S:6, S3A
 assert(post({ action: 'me', token: tok2 }).player.needsClass, 'class no longer exists');
 setSetting('ClassCounts', 'J1:12, J2:12, J3:12, S1AC:4, S1S:6, S2AC:4, S2S:6, S3AC:4, S3S:6');
 setSetting('SchoolYear', '');
+// index.html: every local script carries ?v=APP_VERSION (cache busting), and they all match
+{
+  const html = require('fs').readFileSync(__dirname + '/../index.html', 'utf8');
+  const ver = (html.match(/window\.APP_VERSION = "([^"]+)"/) || [])[1];
+  assert(ver, 'APP_VERSION is set in index.html');
+  const srcs = [...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1]).filter(s => !/^https?:/.test(s));
+  for (const s of srcs) assert(s.endsWith('?v=' + ver), 'script without the current ?v=: ' + s);
+  console.log('cache busting: ' + srcs.length + ' scripts use ?v=' + ver);
+}
 
 // ---------- busy server: Google retries, lock queue, config cache ----------
 ctx.__googleBusy = 2; ctx.__fetches = 0;

@@ -1,5 +1,8 @@
 // Runs apps-script/Code.gs inside Node with fake Google services.
 const fs = require('fs'), vm = require('vm'), crypto = require('crypto');
+// spreadsheets opened with SpreadsheetApp.openById are shared by every env in this process,
+// like two games that use one typing-test spreadsheet
+const BOOKS = {};
 function makeEnv(opts = {}) {
   const sheets = {};
   function makeSheet(name) {
@@ -20,10 +23,14 @@ function makeEnv(opts = {}) {
     return sh;
   }
   const ss = { getSheetByName: n => sheets[n] || null, insertSheet: n => (sheets[n] = makeSheet(n)) };
+  const openById = id => {
+    if (!BOOKS[id]) { const sh = {}; BOOKS[id] = { sheets: sh, getSheetByName: n => sh[n] || null, insertSheet: n => (sh[n] = makeSheet(n)) }; }
+    return BOOKS[id];
+  };
   const props = {}, cache = {};
   const toBytes = v => typeof v === 'string' ? [...Buffer.from(v, 'utf8')].map(b => b > 127 ? b - 256 : b) : v;
   const ctx = {
-    SpreadsheetApp: { getActiveSpreadsheet: () => ss },
+    SpreadsheetApp: { getActiveSpreadsheet: () => ss, openById },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] || null, setProperty: (k, v) => { props[k] = v; } }) },
     Utilities: {
       getUuid: () => crypto.randomUUID(),
@@ -54,4 +61,4 @@ function makeEnv(opts = {}) {
   vm.runInContext(fs.readFileSync(require('path').join(__dirname, '..', 'apps-script', 'Code.gs'), 'utf8'), ctx);
   return { ctx, sheets, ss };
 }
-module.exports = { makeEnv };
+module.exports = { makeEnv, BOOKS };

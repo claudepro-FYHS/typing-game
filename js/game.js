@@ -86,7 +86,7 @@ function startGame(opts) {
     combo: 0, maxCombo: 0, charge: 0, correct: 0, keystrokes: 0, mistakes: {}, time: 0, activeTime: 0,
     paused: false, over: false, myKills: 0, myBosses: 0, coins: 0, shake: 0, perfT: 0, perfN: 0, perfChecked: false,
     snapT: 0, statsT: 0, bossOrder: null, level: Number(opts.level) || 1, event: opts.event || "", eventMult: opts.event && EVENTS[opts.event] ? EVENTS[opts.event].bonus : 1,
-    revenge: opts.mode === "solo" ? revengeList() : {}, revengeKills: 0, comboTier: 0, slowmo: 0,
+    revenge: opts.mode === "solo" ? revengeList() : {}, revengeKills: 0, comboTier: 0, slowmo: 0, awakened: false, awakeMiss: 0,
   });
   G.players = opts.players.map((pi, i) => makePlayer(pi, i, n));
   G.me = player(G.myPid);
@@ -293,6 +293,8 @@ function onFx(ev) {
     if (ev.boss && G.boss) beam(muzzlePos(p), targetPoint(G.boss.target), 0xfff2a8, 0.9, 0.6);
     G.shake = Math.max(G.shake, 0.3); sfx("buster");
     if (p.pid !== G.myPid && G.mode === "multi") floater(window.innerWidth / 2, 150, `${p.nick}: ${p.mech.name} SPECIAL!`, p.color);
+  } else if (ev.kind === "comboItem") {
+    if (p.pid === G.myPid) { floater(window.innerWidth / 2, 230, `COMBO REWARD: ${ITEM_ICON[ev.item] || ""} ${String(ev.item).toUpperCase()}!`, "#7dff8a"); sfx("item"); }
   } else if (ev.kind === "bomb") {
     if (p.pid === G.myPid) { const f = $("#flash"); f.style.background = "rgba(255,255,255,.7)"; f.classList.add("on"); setTimeout(() => { f.classList.remove("on"); setTimeout(() => f.style.background = "", 400); }, 80); }
     sfx("buster");
@@ -414,7 +416,7 @@ function resolveKill(id, pid, combo, how) {
 
 function resolveBossHit(pid, combo, word, dmg) {
   const b = G.boss, p = player(pid);
-  if (!b || !p || b.enter < 1) return;
+  if (!b || !p) return;
   if (word && b.target.word !== word) return; // someone else already finished this word
   b.hp = Math.max(0, b.hp - dmg);
   const comboMult = Math.min(2, 1 + (combo || 0) * 0.05);
@@ -569,6 +571,7 @@ function update(dt) {
     if (p.pid === G.myPid && G.lock && G.lock.alive) aim = targetPoint(G.lock);
     else if (p.aimAt && p.aimAt.alive && p.aimT > 0) aim = targetPoint(p.aimAt);
     p.aimT = Math.max(0, p.aimT - dt);
+    p.anim.awake = p.pid === G.myPid && G.awakened; // 20 in a row: your mech awakens (looks only) until 3 mistakes
     MODELS.aimMech(p.mesh, p.anim, aim);
     MODELS.animateMech(p.mesh, p.anim, dt);
     p.shieldMesh.visible = p.shield && p.alive;
@@ -610,7 +613,7 @@ function handleChar(ch) {
   G.keystrokes++;
   let t = G.lock;
   if (!t) {
-    const cands = G.targets.filter(x => x.alive && !x.pending && x.word[0] === ch && !(x.kind === "boss" && G.boss && G.boss.enter < 1));
+    const cands = G.targets.filter(x => x.alive && !x.pending && x.word[0] === ch);
     if (!cands.length) { miss(null); return; }
     t = cands.reduce((a, b) => threat(b) > threat(a) ? b : a);
     G.lock = t; t.el.classList.add("locked");
@@ -646,6 +649,7 @@ function comboCheck() {
     el.style.color = COMBO_COLORS[tier]; el.style.textShadow = `0 0 24px ${COMBO_COLORS[tier]}`;
     el.classList.remove("go"); void el.offsetWidth; el.classList.add("go");
     sfx("clear"); G.me.anim.victory = 0.6;
+    if (G.me.mech.comboItem && G.combo >= 25) requestComboItem(G.combo);
   }
   if (tier !== G.comboTier) setComboTier(tier);
 }
@@ -661,6 +665,8 @@ function showMeaning(word, x, y) {
 
 function miss(t) {
   G.combo = 0;
+  if (G.awakened && ++G.awakeMiss >= AWAKE_MISSES) { G.awakened = false; floater(window.innerWidth / 2, 190, `${G.me.mech.name}'s awakening has ended`, "#8fe3ff"); }
+  else if (G.awakened) floater(window.innerWidth / 2, 190, `Careful! ${AWAKE_MISSES - G.awakeMiss} more mistake${AWAKE_MISSES - G.awakeMiss > 1 ? "s" : ""} and the awakening ends`, "#ffb3bb");
   if (G.comboTier) setComboTier(0);
   const sp = G.me.mech.special;
   if (sp && G.charge < sp.charge) G.charge = 0;
@@ -678,8 +684,13 @@ function releaseLock() {
   sendProg(t);
 }
 
+const AWAKEN_AT = 20, AWAKE_MISSES = 3;
 function completeWord(t) {
   G.combo++; G.maxCombo = Math.max(G.maxCombo, G.combo);
+  if (G.combo >= AWAKEN_AT && !G.awakened && G.me.mech.awaken) {
+    G.awakened = true; G.awakeMiss = 0; sfx("awaken");
+    floater(window.innerWidth / 2, 190, `${G.me.mech.name} AWAKENS: ${G.me.mech.awaken.name}!`, G.me.mech.awaken.color);
+  }
   comboCheck();
   const sp = G.me.mech.special;
   if (sp) G.charge = Math.min(sp.charge, G.charge + 1);
@@ -695,6 +706,20 @@ function completeWord(t) {
   updateHud();
 }
 
+/* a 25 / 50 / 100 combo gives the mech's combo item (max 3 of each) */
+function requestComboItem(n) {
+  if (!G.me.alive) return;
+  if (isAuthority()) grantComboItem(G.myPid, n); else netSend({ r: "combo", n });
+}
+function grantComboItem(pid, n) {
+  const p = player(pid), k = p && p.mech.comboItem;
+  if (!k || !p.alive || ![25, 50, 100].includes(n)) return;
+  if (n === 25 || !p.comboItems) p.comboItems = {}; // 25 starts a new combo run
+  if (p.comboItems[n] || p.items[k] >= 3) return; // once per combo step, until the combo breaks
+  p.comboItems[n] = true; p.items[k]++;
+  emit({ e: "fx", pid, kind: "comboItem", item: k });
+  emitPState(p);
+}
 function requestItem(k) {
   if (!G.me.alive || !(G.me.items[k] > 0)) return;
   if (isAuthority()) doItem(G.myPid, k); else netSend({ r: "item", k });

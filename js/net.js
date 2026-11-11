@@ -109,6 +109,7 @@ function hostOnData(conn, d) {
     case "claim": { const t = G.byId[d.id]; if (t && t.kind === "boss") resolveBossHit(pid, d.combo, d.word, 1); else resolveKill(d.id, pid, d.combo, "type"); break; }
     case "prog": emit({ e: "prog", pid, id: d.id, n: Math.max(0, Number(d.n) || 0) }); break;
     case "item": doItem(pid, d.k); break;
+    case "combo": grantComboItem(pid, d.n); break;
     case "special": doSpecial(pid); break;
     case "stats": { const p = player(pid); if (p) { p.wpm = Number(d.wpm) || 0; p.acc = Number(d.acc) || 0; } break; }
   }

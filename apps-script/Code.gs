@@ -45,6 +45,7 @@ var DEFAULT_SETTINGS = [
   ['GoogleClientId', '', 'Google Cloud 的 Client ID（xxx.apps.googleusercontent.com）'],
   ['SchoolDomain', 'foonyew.edu.my', '学校邮箱域名'],
   ['LeaderboardMinAccuracy', '80', '准确率达到多少 % 才能上排行榜'],
+  ['TestSheetId', '', '打字测验的试算表 ID（网址 /d/ 和 /edit 中间那串）。两个打字游戏填同一个 ID，就共用测验设定和成绩。留空 = 用这个试算表'],
   ['DisabledEvents', '', '不想要的节日活动，用逗号分隔。例如：halloween, aprilfools（ID 见 README）'],
 ];
 
@@ -59,6 +60,7 @@ var ADMIN_COINS = 999999;
 var STAFF_CLASS = 'STAFF';
 var OTHER_CLASS = 'OTHER'; // 校外 Google 账号
 
+var GAME_TITLE = 'Mecha Strike Typer';
 var TOKEN_HOURS = 12;
 var TZ = 'Asia/Kuala_Lumpur';
 
@@ -67,6 +69,7 @@ var TZ = 'Asia/Kuala_Lumpur';
 /* ------------------------------------------------------------------ */
 
 function setup() {
+  SETTINGS_MEMO_ = null;
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   ensureSheet_(ss, SHEET_SCORES, SCORE_HEADERS);
   ensureSheet_(ss, SHEET_PLAYERS, PLAYER_HEADERS);
@@ -105,6 +108,7 @@ function setup() {
   getSecret_();
   // 纯粹为了让授权画面一次过要求「连接外部服务」的权限
   try { UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?id_token=x', { muteHttpExceptions: true }); } catch (e) {}
+  try { setupTest_(); } catch (e) { Logger.log('Typing test sheet: ' + e); }
   CacheService.getScriptCache().remove('config');
   Logger.log('Setup done. 设置完成！');
 }
@@ -216,6 +220,9 @@ function doPost(e) {
       case 'selectSkin': return json_(withLock_(function () { return selectSkin_(body); }));
       case 'setTitle': return json_(withLock_(function () { return setTitle_(body); }));
       case 'teacher': return json_(teacher_(body));
+      case 'testInfo': return json_(testInfo_(body));
+      case 'testStart': return json_(withLock_(function () { return testStart_(body); }));
+      case 'testFinish': return json_(withLock_(function () { return testFinish_(body); }));
       case 'config': return json_(cachedConfig_());
       case 'leaderboard': return json_(getLeaderboard_());
     }
@@ -251,7 +258,7 @@ function getPublicConfig_() {
   var s = getSettings_();
   return { ok: true, classes: s.classList, grades: s.grades, schoolYear: s.schoolYear, allowOthers: s.allowOthers,
     clientId: s.GoogleClientId || '', domain: s.domain, minAccuracy: s.minAcc,
-    eventWindows: eventWindows_(), disabledEvents: s.disabledEvents };
+    eventWindows: eventWindows_(), disabledEvents: s.disabledEvents, test: testActive_() };
 }
 
 /* ------------------------------------------------------------------ */
@@ -966,3 +973,203 @@ function checkNickname_(nick) {
   }
   return '';
 }
+
+/* ------------------------------------------------------------------ */
+/*  Typing test 打字测验 (the same code is in both typing games)       */
+/* ------------------------------------------------------------------ */
+// The test settings and results live in ONE spreadsheet that both games can use:
+// Settings → TestSheetId (blank = this spreadsheet). Tabs: TestSettings, TestAttempts, TestResults.
+// Scoring: Net WPM = WPM × accuracy. Net 10 = 40 points, rising in a straight line to 100 at the
+// full-marks speed of the student's form (TestFullWPM, never below 40). Accuracy under
+// TestPassAccuracy halves that attempt. The best attempt counts.
+var SHEET_TEST_SETTINGS = 'TestSettings', SHEET_TEST_ATTEMPTS = 'TestAttempts', SHEET_TEST_RESULTS = 'TestResults';
+var TEST_ATTEMPT_HEADERS = ['Time', 'Test Code', 'Attempt ID', 'Email', 'Class', 'Seat No', 'Name', 'Game', 'Attempt No', 'Status',
+  'Start (ms)', 'Minutes', 'Seconds', 'WPM', 'Accuracy (%)', 'Net WPM', 'Score', 'Keys', 'Errors', 'Words'];
+var TEST_RESULT_HEADERS = ['Test Code', 'Class', 'Seat No', 'Name', 'Email', 'Attempts Used', 'Score (best)', 'Net WPM', 'WPM',
+  'Accuracy (%)', 'Game', 'Updated'];
+var TEST_DEFAULTS = [
+  ['TestCode', '', '测验代号（要有英文字母），例如 J2-T2。留空 = 没有测验，学生只能练习。换一个新代号 = 新的一次测验，每人重新有机会'],
+  ['TestMinutes', '5', '每次测验几分钟'],
+  ['TestAttempts', '2', '每人几次机会，取最高分'],
+  ['TestWordBank', 'everyday', '词库 ID（例如 everyday）。同一个代号 = 每个人同样的单字、同样的顺序'],
+  ['TestFullWPM', 'J1:40, J2:40, J3:45, S1:45, S2:45, S3:45', '各年段 Net WPM 达到多少拿满分（最低 40）'],
+  ['TestPassAccuracy', '85', '准确率低于这个 %，该次分数减半'],
+  ['TestClasses', '', '只限这些年段或班级考，例如 J2, S1S2。留空 = 所有学生都可以考'],
+];
+
+function testBook_() {
+  var id = String(getSettings_().TestSheetId || '').trim();
+  return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+}
+
+function setupTest_() {
+  var ss = testBook_();
+  var st = ss.getSheetByName(SHEET_TEST_SETTINGS);
+  if (!st) {
+    st = ss.insertSheet(SHEET_TEST_SETTINGS);
+    st.getRange(1, 1, 1, 3).setValues([['Key', 'Value', '说明']]).setFontWeight('bold');
+  }
+  var have = st.getDataRange().getValues().map(function (r) { return String(r[0]); });
+  TEST_DEFAULTS.forEach(function (row) { if (have.indexOf(row[0]) === -1) st.appendRow(row); });
+  ensureSheet_(ss, SHEET_TEST_ATTEMPTS, TEST_ATTEMPT_HEADERS);
+  ensureSheet_(ss, SHEET_TEST_RESULTS, TEST_RESULT_HEADERS);
+  CacheService.getScriptCache().remove('testcfg');
+}
+
+function testConfig_() {
+  var cache = CacheService.getScriptCache(), hit = cache.get('testcfg');
+  if (hit) return JSON.parse(hit);
+  var ss = testBook_(), st = ss.getSheetByName(SHEET_TEST_SETTINGS);
+  if (!st) { setupTest_(); st = ss.getSheetByName(SHEET_TEST_SETTINGS); }
+  var raw = {};
+  st.getDataRange().getValues().forEach(function (r) { raw[String(r[0]).trim()] = String(r[1] == null ? '' : r[1]).trim(); });
+  var full = {};
+  String(raw.TestFullWPM || '').split(/[,，、;\n]+/).forEach(function (part) {
+    var m = part.trim().match(/^([A-Za-z0-9]+)\s*[:：=]\s*(\d+(?:\.\d+)?)$/);
+    if (m) full[m[1].toUpperCase()] = Math.max(40, Number(m[2]));
+  });
+  var cfg = {
+    code: String(raw.TestCode || '').slice(0, 40),
+    minutes: clamp_(Number(raw.TestMinutes) || 5, 1, 15),
+    attempts: clamp_(Math.round(Number(raw.TestAttempts) || 2), 1, 10),
+    bank: String(raw.TestWordBank || '').trim() || 'everyday',
+    full: full,
+    passAcc: clamp_(raw.TestPassAccuracy === '' || raw.TestPassAccuracy == null ? 85 : Number(raw.TestPassAccuracy) || 0, 0, 100),
+    classes: String(raw.TestClasses || '').toUpperCase().split(/[,，、;\s]+/).filter(String),
+  };
+  cache.put('testcfg', JSON.stringify(cfg), 30);
+  return cfg;
+}
+
+// full-marks Net WPM for a class: the longest matching prefix in TestFullWPM (J2 matches J205), at least 40
+function testFullWpm_(cls, cfg) {
+  cls = String(cls || '').toUpperCase();
+  var best = 0, len = -1;
+  for (var k in cfg.full) if (cls.indexOf(k) === 0 && k.length > len) { best = cfg.full[k]; len = k.length; }
+  return Math.max(40, best || 40);
+}
+
+function testScore_(net, acc, full, passAcc) {
+  var sc = net >= full ? 100 : net <= 10 ? net * 4 : 40 + 60 * (net - 10) / (full - 10);
+  if (acc < passAcc) sc /= 2;
+  return Math.round(Math.max(0, sc));
+}
+
+function testAllowed_(p, cfg) {
+  if (!cfg.classes.length) return true;
+  var c = String(p.cls || '').toUpperCase();
+  return cfg.classes.some(function (x) { return c === x || c.indexOf(x) === 0; });
+}
+
+function testAttempts_(ss) {
+  var sh = ensureSheet_(ss, SHEET_TEST_ATTEMPTS, TEST_ATTEMPT_HEADERS);
+  return { sh: sh, values: sh.getDataRange().getValues() };
+}
+
+// this student's attempts at this test, oldest first
+function testMine_(values, code, email) {
+  var out = [];
+  for (var i = 1; i < values.length; i++) {
+    var r = values[i];
+    if (String(r[1]) !== code || String(r[3]).toLowerCase() !== email) continue;
+    out.push({ row: i + 1, id: String(r[2]), n: Number(r[8]) || out.length + 1, status: String(r[9]), start: Number(r[10]) || 0,
+      minutes: Number(r[11]) || 0, wpm: Number(r[13]) || 0, acc: Number(r[14]) || 0, net: Number(r[15]) || 0,
+      score: r[16] === '' || r[16] == null ? null : Number(r[16]), game: String(r[7]) });
+  }
+  return out;
+}
+
+function testBestOf_(mine) {
+  var best = null;
+  mine.forEach(function (a) { if (a.score != null && (!best || a.score > best.score || (a.score === best.score && a.net > best.net))) best = a; });
+  return best;
+}
+
+// one row per student and test in TestResults (written whenever an attempt starts or ends)
+function testUpsertResult_(ss, code, email, p, mine) {
+  var sh = ensureSheet_(ss, SHEET_TEST_RESULTS, TEST_RESULT_HEADERS);
+  var values = sh.getDataRange().getValues(), row = 0;
+  for (var i = 1; i < values.length; i++) if (String(values[i][0]) === code && String(values[i][4]).toLowerCase() === email) { row = i + 1; break; }
+  var b = testBestOf_(mine);
+  var vals = [code, p.cls, p.seat, p.name, email, mine.length, b ? b.score : 0, b ? b.net : '', b ? b.wpm : '', b ? b.acc : '',
+    b ? b.game : GAME_TITLE, new Date()];
+  if (row) sh.getRange(row, 1, 1, vals.length).setValues([vals]); else sh.appendRow(vals);
+}
+
+function testPublic_(mine) {
+  return mine.map(function (a) { return { n: a.n, status: a.status, score: a.score, net: a.net, wpm: a.wpm, acc: a.acc }; });
+}
+
+function testInfo_(body) {
+  var email = checkToken_(body.token);
+  if (!email) return { ok: false, error: 'session_expired' };
+  var cfg = testConfig_();
+  var out = { ok: true, active: !!cfg.code, code: cfg.code, minutes: cfg.minutes, attempts: cfg.attempts, bank: cfg.bank, passAcc: cfg.passAcc };
+  var found = findPlayer_(email);
+  if (!found) { out.allowed = false; out.reason = 'no_profile'; return out; }
+  out.allowed = testAllowed_(found.data, cfg);
+  out.full = testFullWpm_(found.data.cls, cfg);
+  out.history = [];
+  if (cfg.code) {
+    var mine = testMine_(testAttempts_(testBook_()).values, cfg.code, email);
+    out.used = mine.length; out.history = testPublic_(mine);
+    var b = testBestOf_(mine); out.best = b ? b.score : null;
+  }
+  return out;
+}
+
+function testStart_(body) {
+  var email = checkToken_(body.token);
+  if (!email) return { ok: false, error: 'session_expired' };
+  var cfg = testConfig_();
+  if (!cfg.code) return { ok: false, error: 'no_test' };
+  if (String(body.code || '') !== cfg.code) return { ok: false, error: 'test_changed' };
+  var found = findPlayer_(email);
+  if (!found) return { ok: false, error: 'no_profile' };
+  var p = found.data;
+  if (!testAllowed_(p, cfg)) return { ok: false, error: 'not_your_class' };
+  var ss = testBook_(), t = testAttempts_(ss), mine = testMine_(t.values, cfg.code, email);
+  if (mine.length >= cfg.attempts) return { ok: false, error: 'no_attempts', used: mine.length };
+  var id = Utilities.getUuid(), n = mine.length + 1, now = Date.now();
+  t.sh.appendRow([new Date(now), cfg.code, id, email, p.cls, p.seat, p.name, GAME_TITLE, n, 'started', now, cfg.minutes,
+    '', '', '', '', '', '', '', '']);
+  mine.push({ id: id, n: n, status: 'started', start: now, minutes: cfg.minutes, score: null, net: 0, wpm: 0, acc: 0, game: GAME_TITLE });
+  testUpsertResult_(ss, cfg.code, email, p, mine);
+  return { ok: true, attemptId: id, attemptNo: n, attempts: cfg.attempts, minutes: cfg.minutes, bank: cfg.bank, code: cfg.code,
+    full: testFullWpm_(p.cls, cfg), passAcc: cfg.passAcc };
+}
+
+function testFinish_(body) {
+  var email = checkToken_(body.token);
+  if (!email) return { ok: false, error: 'session_expired' };
+  var ss = testBook_(), t = testAttempts_(ss), id = String(body.attemptId || ''), r = null, ri = 0;
+  for (var i = 1; i < t.values.length; i++) if (String(t.values[i][2]) === id && String(t.values[i][3]).toLowerCase() === email) { r = t.values[i]; ri = i; break; }
+  if (!r) return { ok: false, error: 'no_attempt' };
+  var code = String(r[1]), cfg = testConfig_(), minutes = Number(r[11]) || cfg.minutes;
+  var mine = testMine_(t.values, code, email);
+  var full = testFullWpm_(r[4], cfg);
+  if (String(r[9]) !== 'started') { // sent twice (network retry): answer with what is saved
+    var b0 = testBestOf_(mine);
+    return { ok: true, already: true, attemptNo: Number(r[8]), attempts: cfg.attempts, wpm: Number(r[13]) || 0, accuracy: Number(r[14]) || 0,
+      net: Number(r[15]) || 0, score: Number(r[16]) || 0, best: b0 ? b0.score : null, full: full, history: testPublic_(mine) };
+  }
+  var secs = Math.round((Date.now() - Number(r[10])) / 1000), left = !!body.left;
+  if (!left && secs < minutes * 60 - 20) return { ok: false, error: 'too_early' };
+  var keys = clamp_(Math.round(Number(body.keys) || 0), 0, 200000);
+  var correct = clamp_(Math.round(Number(body.correct) || 0), 0, keys);
+  var words = clamp_(Math.round(Number(body.words) || 0), 0, 20000);
+  var wpm = correct / 5 / minutes, acc = keys ? correct / keys * 100 : 0, status = left ? 'left page' : 'finished';
+  if (wpm > 220) { status = 'rejected (too fast)'; wpm = 0; acc = 0; }
+  var net = wpm * acc / 100, score = testScore_(net, acc, full, cfg.passAcc);
+  wpm = round1_(wpm); acc = round1_(acc); net = round1_(net);
+  t.sh.getRange(ri + 1, 10, 1, 11).setValues([[status, Number(r[10]), minutes, secs, wpm, acc, net, score, keys, keys - correct, words]]);
+  mine.forEach(function (a) { if (a.id === id) { a.status = status; a.wpm = wpm; a.acc = acc; a.net = net; a.score = score; } });
+  var found = findPlayer_(email), p = found ? found.data : { cls: r[4], seat: r[5], name: r[6] };
+  testUpsertResult_(ss, code, email, p, mine);
+  var b = testBestOf_(mine);
+  return { ok: true, attemptNo: Number(r[8]), attempts: cfg.attempts, wpm: wpm, accuracy: acc, net: net, score: score, status: status,
+    best: b ? b.score : null, full: full, passAcc: cfg.passAcc, history: testPublic_(mine) };
+}
+
+// for the config: is a test running right now? (never breaks the config if the test sheet can't be opened)
+function testActive_() { try { return !!testConfig_().code; } catch (e) { return false; } }

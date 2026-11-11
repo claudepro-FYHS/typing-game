@@ -156,6 +156,8 @@ async function loadRemoteConfig() {
       S.remote.grades = Array.isArray(c.grades) ? c.grades : [];
       store.set("mst_grades", S.remote.grades);
       S.remote.allowOthers = c.allowOthers !== false;
+      S.remote.test = !!c.test;
+      if (window.examRefreshButton) examRefreshButton();
       if (c.domain) S.remote.domain = c.domain;
       S.remote.clientId = c.clientId || "";
       S.remote.minAccuracy = c.minAccuracy;
@@ -488,7 +490,8 @@ function renderMechList() {
       <div class="top"><span class="name">${m.name}</span>${action}</div>
       <div class="from">${esc(m.from)}</div>
       <div class="hp">${"♥".repeat(m.hp)} <span class="muted small">${owned ? "" : "🪙 " + m.price}</span></div>
-      <div class="desc">${esc(m.plus)} ${m.minus ? `<span class="minus">(${esc(m.minus)})</span>` : ""}</div></div>`;
+      <div class="desc">${esc(m.plus)} ${m.minus ? `<span class="minus">(${esc(m.minus)})</span>` : ""}</div>
+      ${m.awaken ? `<div class="desc small" style="color:${m.awaken.color}">🔥 20 in a row: <b>${esc(m.awaken.name)}</b> · combo 25/50/100: ${({ bomb: "💣", freeze: "❄️", shield: "🛡️" })[m.comboItem] || ""}</div>` : ""}</div>`;
   }).join("");
   $$("#mech-list .mech-card").forEach(c => c.addEventListener("click", (e) => {
     if (e.target.closest("button")) return;
@@ -629,6 +632,12 @@ function sfx(type) {
         voice({ wave: "sine", f0: 90, f1: 30, dur: 0.7, vol: 0.2 });
         break;
       case "clear": voice({ wave: "triangle", f0: 523, f1: 1046, dur: 0.5, vol: 0.08 }); voice({ wave: "triangle", f0: 659, f1: 1318, dur: 0.5, vol: 0.05 }); break;
+      case "awaken": // power surge: a rising roar and a bright chord
+        voice({ wave: "sawtooth", f0: 140, f1: 1200, glide: 0.7, dur: 0.9, vol: 0.08, cut0: 500, cut1: 5000, q: 5 });
+        voice({ wave: "sawtooth", f0: 141, f1: 1205, detune: 14, glide: 0.7, dur: 0.9, vol: 0.06, cut0: 500, cut1: 5000, q: 5 });
+        for (const f of [523, 659, 784, 1047]) voice({ wave: "triangle", f0: f, dur: 1.1, vol: 0.04, att: 0.35 });
+        noise({ type: "bandpass", f0: 600, f1: 5000, dur: 0.8, vol: 0.08, q: 1 });
+        break;
       case "steal": voice({ wave: "square", f0: 320, f1: 160, dur: 0.25, vol: 0.04, cut0: 1500 }); break;
     }
   } catch (e) {}
