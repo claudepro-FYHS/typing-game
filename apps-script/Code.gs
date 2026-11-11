@@ -1055,6 +1055,10 @@ function testScore_(net, acc, full, passAcc) {
   return Math.round(Math.max(0, sc));
 }
 
+// the test code a student types: case, spaces and the kind of dash don't matter
+var TEST_CODE_TRIES = 5; // wrong codes in a row before a 10-minute wait
+function normCode_(c) { return String(c == null ? '' : c).toUpperCase().replace(/[\s\-_－—–]+/g, ''); }
+
 function testAllowed_(p, cfg) {
   if (!cfg.classes.length) return true;
   var c = String(p.cls || '').toUpperCase();
@@ -1104,7 +1108,8 @@ function testInfo_(body) {
   var email = checkToken_(body.token);
   if (!email) return { ok: false, error: 'session_expired' };
   var cfg = testConfig_();
-  var out = { ok: true, active: !!cfg.code, code: cfg.code, minutes: cfg.minutes, attempts: cfg.attempts, bank: cfg.bank, passAcc: cfg.passAcc };
+  // the code itself is never sent: students must type it (from the teacher) to start
+  var out = { ok: true, active: !!cfg.code, minutes: cfg.minutes, attempts: cfg.attempts, bank: cfg.bank, passAcc: cfg.passAcc };
   var found = findPlayer_(email);
   if (!found) { out.allowed = false; out.reason = 'no_profile'; return out; }
   out.allowed = testAllowed_(found.data, cfg);
@@ -1123,7 +1128,9 @@ function testStart_(body) {
   if (!email) return { ok: false, error: 'session_expired' };
   var cfg = testConfig_();
   if (!cfg.code) return { ok: false, error: 'no_test' };
-  if (String(body.code || '') !== cfg.code) return { ok: false, error: 'test_changed' };
+  var cache = CacheService.getScriptCache(), triesKey = 'codetries:' + email, tries = Number(cache.get(triesKey)) || 0;
+  if (tries >= TEST_CODE_TRIES) return { ok: false, error: 'too_many_codes' };
+  if (normCode_(body.code) !== normCode_(cfg.code)) { cache.put(triesKey, String(tries + 1), 600); return { ok: false, error: 'wrong_code' }; }
   var found = findPlayer_(email);
   if (!found) return { ok: false, error: 'no_profile' };
   var p = found.data;

@@ -1,14 +1,16 @@
 /* =====================================================================
  *  TYPING TEST (打字测验) — the same file is used by both typing games.
- *  A plain timed test (no enemies, items or combos) so every student is
- *  measured the same way: the same words in the same order for one test
- *  code, the teacher sets minutes / attempts / scoring in the TestSettings
- *  tab (see apps-script/Code.gs, "Typing test").
- *  Typing: type each word, then SPACE. A wrong key is a mistake and the
- *  cursor does not move. WPM = correct keys (letters + spaces) / 5 / minutes,
- *  Net WPM = WPM × accuracy. The server works out the score.
+ *  The test is a battle (startExamGame in js/game.js): the words come in the
+ *  test's fixed order, enemies stop at a distance and wait until they are
+ *  typed, nobody gets hurt, no boss / items / specials / combo rewards, so
+ *  every student is measured the same way. The teacher sets the code,
+ *  minutes, attempts and scoring in the TestSettings tab (apps-script/Code.gs,
+ *  "Typing test"); students must type the test code to start an attempt.
+ *  WPM = correct keys / 5 / minutes, where correct keys = letters of finished
+ *  words + one per finished word (the "space"); accuracy = correct keys /
+ *  all keys; Net WPM = WPM × accuracy. The server works out the score.
  *  Uses globals from core.js: $, $$, esc, S, CFG, api, apiRetry, isSchool,
- *  showScreen, goPlayHome, toast, openModal, sfx, WORD_BANKS.
+ *  showScreen, goPlayHome, toast, openModal, sfx, WORD_BANKS, and GAME_EXAM from game.js.
  * ===================================================================== */
 (function () {
 "use strict";
@@ -19,41 +21,25 @@ const EX = { info: null, run: null, loading: false };
 const css = `
 #scr-exam .exam-card { width: min(920px, 100%); }
 #scr-exam h2 { margin: 0 0 4px; }
-.exam-sub { margin: 0 0 12px; }
 .exam-box { background: rgba(0,0,0,.25); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin: 10px 0; }
 .exam-rules { margin: 6px 0 0; padding-left: 20px; line-height: 1.6; }
 .exam-hist { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 14px; }
 .exam-hist th, .exam-hist td { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: left; }
-.exam-top { display: flex; gap: 14px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; }
-.exam-timer { font: 800 44px/1 monospace; letter-spacing: 1px; }
-.exam-timer.low { color: #ff6b6b; }
-.exam-words { position: relative; font: 600 30px/1.75 ui-monospace, Consolas, "Courier New", monospace; height: calc(1.75em * 3); overflow: hidden;
-  display: flex; flex-wrap: wrap; align-content: flex-start; column-gap: .6em; padding: 6px 4px; cursor: text; user-select: none; }
-.exam-words .w { opacity: .55; white-space: nowrap; }
-.exam-words .w.cur { opacity: 1; }
-.exam-words .w.cur .ok { color: #6dff9b; }
-.exam-words .w.cur .nx { border-bottom: 3px solid currentColor; }
-.exam-words .w.cur.space::after { content: "␣"; color: #ffd34d; margin-left: .1em; }
-.exam-words.bad { animation: examShake .18s; }
-.exam-words.bad .w.cur .nx { color: #ff6b6b; }
-@keyframes examShake { 0%,100% { transform: none } 30% { transform: translateX(-5px) } 70% { transform: translateX(5px) } }
-.exam-focus { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.65);
-  font: 600 18px sans-serif; border-radius: 10px; cursor: pointer; }
-.exam-words.nofocus .exam-focus { display: flex; }
-.exam-count { font: 800 90px/1 monospace; text-align: center; padding: 30px 0; }
+.exam-code { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.exam-code input { font: 700 20px monospace; text-transform: uppercase; letter-spacing: 1px; width: 12ch; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: rgba(0,0,0,.35); color: inherit; }
 .exam-big { font: 800 46px/1.1 monospace; }
-#exam-typer { position: fixed; left: -9999px; top: 0; opacity: 0; width: 10px; }
-body.examining #topbar { display: none; }
 #btn-exam .live { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #ff4d4d; box-shadow: 0 0 8px #ff4d4d; margin-left: 6px; }
-@media (max-width: 600px) { .exam-words { font-size: 22px; } .exam-timer { font-size: 34px; } }
+body.exam-game #hud-hearts, body.exam-game .item-btn, body.exam-game #special-btn, body.exam-game #btn-pause { display: none !important; }
+body.exam-game #hud-stage { font-size: 1.15em; color: #ffd34d; }
+body.exam-game.exam-low #hud-stage { color: #ff6b6b; }
 `;
 document.head.insertAdjacentHTML("beforeend", `<style>${css}</style>`);
 document.body.insertAdjacentHTML("beforeend", `
-<section id="scr-exam" class="screen"><div class="center-wrap"><div class="card exam-card" id="exam-card"></div></div></section>
-<input id="exam-typer" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Type the words here">`);
+<section id="scr-exam" class="screen"><div class="center-wrap"><div class="card exam-card" id="exam-card"></div></div></section>`);
 const multiBtn = $("#btn-multi");
 if (multiBtn) multiBtn.insertAdjacentHTML("afterend", `<button class="btn ghost" id="btn-exam" style="width:100%;margin-top:10px">📝 TYPING TEST</button>`);
-const card = $("#exam-card"), typer = $("#exam-typer");
+const card = $("#exam-card");
 
 function refreshButton() {
   const b = $("#btn-exam"); if (!b) return;
@@ -111,7 +97,6 @@ async function openExam() {
 }
 
 function renderMenu() {
-  document.body.classList.remove("examining");
   const I = EX.info || {}, full = I.full || 40, passAcc = I.passAcc == null ? 85 : I.passAcc;
   let status = "", canStart = false;
   if (!isSchool()) status = `<p>Sign in with your school Google account to take a test. Anyone can practise.</p>`;
@@ -120,13 +105,15 @@ function renderMenu() {
   else if (I.error) status = `<p class="err">Could not reach the server. Try again in a moment.</p>`;
   else if (!I.active) status = `<p>There is no test right now. You can practise.</p>`;
   else if (I.reason === "no_profile") status = `<p>Fill in your class and seat number first (EDIT PROFILE).</p>`;
-  else if (!I.allowed) status = `<p>Test <b>${esc(I.code)}</b> is not for your class. You can practise.</p>`;
+  else if (!I.allowed) status = `<p>The test that is open now is not for your class. You can practise.</p>`;
   else {
     const left = I.attempts - (I.used || 0);
     canStart = left > 0;
-    status = `<p>Test <b>${esc(I.code)}</b> · ${I.minutes} minute${I.minutes > 1 ? "s" : ""} · ${I.attempts} attempt${I.attempts > 1 ? "s" : ""}, the best one counts.</p>
+    status = `<p>A test is open · ${I.minutes} minute${I.minutes > 1 ? "s" : ""} · ${I.attempts} attempt${I.attempts > 1 ? "s" : ""}, the best one counts.</p>
       <p>Attempts used: <b>${I.used || 0} / ${I.attempts}</b>${I.best != null ? ` · Best score: <b>${I.best}</b> / 100` : ""}</p>
-      ${left <= 0 ? `<p class="muted">You have used all your attempts.</p>` : ""}`;
+      ${left <= 0 ? `<p class="muted">You have used all your attempts.</p>` : `<div class="exam-code"><label for="exam-code"><b>Test code from your teacher:</b></label>
+        <input id="exam-code" maxlength="40" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE">
+        <button class="btn primary" id="exam-start" style="flex:0 0 auto">START ATTEMPT ${(I.used || 0) + 1} ▶</button></div>`}`;
   }
   const hist = (I.history || []).length ? `<table class="exam-hist"><tr><th>Attempt</th><th>Net WPM</th><th>WPM</th><th>Accuracy</th><th>Score</th><th></th></tr>
     ${I.history.map(a => `<tr><td>${a.n}</td><td>${a.score == null ? "—" : a.net}</td><td>${a.score == null ? "—" : a.wpm}</td><td>${a.score == null ? "—" : a.acc + "%"}</td>
@@ -137,9 +124,9 @@ function renderMenu() {
     <div class="exam-box small">
       <b>How it works</b>
       <ul class="exam-rules">
-        <li>Type the words in order. Press <kbd>SPACE</kbd> after each word.</li>
-        <li>A wrong key counts as a mistake (the cursor waits for the right key).</li>
-        <li>Net WPM = typing speed × accuracy. Full marks at <b>${full}</b> Net WPM${full > 40 ? "" : " or more"}; 10 Net WPM = 40 points.</li>
+        <li>It is a battle with your own mech, but nobody gets hurt: the enemies <b>stop and wait</b> until you type their word. Type as fast and as accurately as you can until the time is up.</li>
+        <li>Everybody gets the same words in the same order. No boss, items or specials in a test.</li>
+        <li>A wrong key counts as a mistake. Net WPM = typing speed × accuracy. Full marks at <b>${full}</b> Net WPM${full > 40 ? "" : " or more"}; 10 Net WPM = 40 points.</li>
         <li>Accuracy under ${passAcc}% halves the score of that attempt.</li>
         <li>Don't leave the page: switching tabs or windows ends the attempt. Closing or reloading the page uses up the attempt.</li>
       </ul>
@@ -147,26 +134,32 @@ function renderMenu() {
     <div class="row" style="justify-content:flex-end;flex-wrap:wrap;gap:8px">
       <button class="btn ghost" id="exam-back" style="flex:0 0 auto">◀ BACK</button>
       <button class="btn" id="exam-practice" style="flex:0 0 auto">PRACTICE (${PRACTICE_MIN} MIN)</button>
-      ${canStart ? `<button class="btn primary" id="exam-start" style="flex:0 0 auto">START ATTEMPT ${(I.used || 0) + 1} ▶</button>` : ""}
     </div>`;
   $("#exam-back").onclick = () => goPlayHome();
-  $("#exam-practice").onclick = () => begin({ real: false, minutes: PRACTICE_MIN, words: seededWords("practice" + Date.now(), "everyday", 400), full, passAcc });
-  if (canStart) $("#exam-start").onclick = confirmStart;
+  $("#exam-practice").onclick = () => { focusGameTyper(); begin({ real: false, minutes: PRACTICE_MIN, words: seededWords("practice" + Date.now(), "everyday", 400), full, passAcc }); };
+  if (canStart) {
+    $("#exam-start").onclick = confirmStart;
+    $("#exam-code").addEventListener("keydown", e => { if (e.key === "Enter") confirmStart(); });
+  }
 }
+function focusGameTyper() { const t = $("#typer"); if (t) t.focus({ preventScroll: true }); } // inside a click, so phone keyboards open
 
 function confirmStart() {
-  const I = EX.info;
+  const I = EX.info, code = String(($("#exam-code") || {}).value || "").trim();
+  if (!code) { toast("Type the test code your teacher gives you.", 4000); $("#exam-code").focus(); return; }
   openModal(`<h2>START ATTEMPT ${(I.used || 0) + 1} OF ${I.attempts}?</h2>
     <p>The test takes <b>${I.minutes} minutes</b>. Once it starts, this attempt counts even if you close the page.</p>
     <p>Switching to another tab or window ends the attempt.</p>`,
     `<button class="btn primary extra" id="exam-go">START ▶</button>`);
   $("#exam-go").onclick = async () => {
+    focusGameTyper();
     $("#exam-go").disabled = true; $("#exam-go").textContent = "STARTING…";
     let r;
-    try { r = await apiRetry({ action: "testStart", token: S.session.token, code: I.code }, "POST", 30000, 4); } catch (e) { r = { ok: false, error: "network" }; }
+    try { r = await apiRetry({ action: "testStart", token: S.session.token, code }, "POST", 30000, 4); } catch (e) { r = { ok: false, error: "network" }; }
     $("#btn-modal-close").click();
     if (!r || !r.ok) {
-      const why = { no_attempts: "You have used all your attempts.", test_changed: "The test has changed. Open the test page again.", no_test: "The test is closed.",
+      const why = { wrong_code: "That is not the right test code. Check with your teacher.", too_many_codes: "Too many wrong codes. Wait a few minutes and ask your teacher.",
+        no_attempts: "You have used all your attempts.", no_test: "The test is closed.",
         not_your_class: "This test is not for your class.", session_expired: "Your sign-in has expired. Sign in again.", busy: "The server is busy. Try again." }[r && r.error];
       toast(why || "Could not start the test. Try again.", 5000);
       return openExam();
@@ -176,86 +169,31 @@ function confirmStart() {
   };
 }
 
-/* ---------- running ---------- */
+/* ---------- running: the battle in js/game.js ---------- */
+function timeLeft(R) { return R.started ? R.minutes * 60000 - (performance.now() - R.t0) : R.minutes * 60000; }
+function clock(ms) { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
 function begin(o) {
-  EX.run = Object.assign({ i: 0, typed: 0, keys: 0, correct: 0, errors: 0, words_done: 0, started: false, over: false, t0: 0 }, o);
-  document.body.classList.add("examining");
-  card.innerHTML = `
-    <div class="exam-top"><h2>${o.real ? `TEST ${esc(o.code)} · ATTEMPT ${o.attemptNo}/${o.attempts}` : "PRACTICE"}</h2>
-      <div class="exam-timer" id="exam-timer">${o.minutes}:00</div></div>
-    <p class="muted small exam-sub">Type the words, SPACE after each word.${o.real ? " Stay on this page until the time is up." : ""}</p>
-    <div class="exam-box"><div class="exam-words" id="exam-words"><div class="exam-count" id="exam-count">3</div></div></div>
-    <div class="row small muted" style="justify-content:space-between"><span id="exam-progress">Words: 0</span>
-      ${o.real ? "" : `<button class="btn ghost" id="exam-stop" style="flex:0 0 auto">STOP PRACTICE</button>`}</div>`;
-  if (!o.real) $("#exam-stop").onclick = () => finish(false, true);
-  focusTyper();
-  let n = 3;
-  const tick = () => {
-    if (EX.run !== R) return;
-    if (--n > 0) { $("#exam-count").textContent = n; setTimeout(tick, 1000); return; }
-    R.started = true; R.t0 = performance.now(); render(); loop();
-  };
+  EX.run = Object.assign({ correct: 0, keys: 0, errors: 0, words_done: 0, started: false, over: false, t0: 0 }, o);
   const R = EX.run;
-  setTimeout(tick, 1000);
-}
-function focusTyper() { typer.value = ".."; typer.focus({ preventScroll: true }); try { typer.setSelectionRange(2, 2); } catch (e) {} }
-
-function render() {
-  const R = EX.run, box = $("#exam-words"); if (!R || !box) return;
-  const w = R.words[R.i], done = R.typed >= w.length;
-  let html = `<span class="w cur${done ? " space" : ""}"><span class="ok">${esc(w.slice(0, R.typed))}</span>${done ? "" : `<span class="nx">${esc(w[R.typed])}</span>${esc(w.slice(R.typed + 1))}`}</span>`;
-  for (let k = R.i + 1; k < R.i + 40 && k < R.words.length; k++) html += `<span class="w">${esc(R.words[k])}</span>`;
-  box.innerHTML = html + `<div class="exam-focus" id="exam-focus">Click here to keep typing — the clock is still running!</div>`;
-  box.classList.toggle("nofocus", document.activeElement !== typer);
-  $("#exam-focus").onclick = focusTyper;
-  box.onclick = focusTyper;
-  $("#exam-progress").textContent = `Words: ${R.words_done}`;
+  const label = o.real ? `TEST · ATTEMPT ${o.attemptNo}/${o.attempts}` : "PRACTICE";
+  GAME_EXAM.startExamGame({
+    words: o.words,
+    title: o.real ? `TYPING TEST · ATTEMPT ${o.attemptNo}/${o.attempts}` : "PRACTICE",
+    hud: () => `${label} · ⏱ ${clock(timeLeft(R))}${o.real ? "" : " · ESC = stop"}`,
+    onStart: () => { if (EX.run !== R || R.over) return; R.started = true; R.t0 = performance.now(); loop(); },
+  });
 }
 
 function loop() {
   const R = EX.run; if (!R || R.over) return;
-  const left = R.minutes * 60000 - (performance.now() - R.t0), el = $("#exam-timer");
-  if (el) { const s = Math.max(0, Math.ceil(left / 1000)); el.textContent = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); el.classList.toggle("low", s <= 10); }
+  const left = timeLeft(R);
+  document.body.classList.toggle("exam-low", left <= 10000);
+  try { updateHud(); } catch (e) {}
   if (left <= 0) return finish(false);
   setTimeout(loop, 200);
 }
 
-function onChar(ch) {
-  const R = EX.run; if (!R || R.over || !R.started) return;
-  const w = R.words[R.i];
-  if (ch === " ") {
-    if (R.typed === 0) return; // an extra space between words is ignored
-    R.keys++;
-    if (R.typed >= w.length) { R.correct++; R.i++; R.typed = 0; R.words_done++; }
-    else bad();
-    return render();
-  }
-  if (!/^[a-zA-Z]$/.test(ch)) return;
-  ch = ch.toLowerCase(); R.keys++;
-  if (R.typed < w.length && w[R.typed] === ch) { R.correct++; R.typed++; try { sfx("key"); } catch (e) {} }
-  else bad();
-  render();
-}
-function bad() {
-  const R = EX.run; R.errors++;
-  try { sfx("err"); } catch (e) {}
-  const box = $("#exam-words"); if (box) { box.classList.remove("bad"); void box.offsetWidth; box.classList.add("bad"); }
-}
-
-/* input: one key at a time; pasted or auto-completed text is ignored */
-typer.addEventListener("input", (e) => {
-  const R = EX.run;
-  const v = typer.value;
-  if (R && R.started && !R.over && v.startsWith("..")) {
-    const add = v.slice(2);
-    if (add.length === 1 && !(e && /Paste|Drop/.test(e.inputType || ""))) onChar(add);
-  }
-  typer.value = ".."; try { typer.setSelectionRange(2, 2); } catch (err) {}
-});
-typer.addEventListener("paste", e => e.preventDefault());
-typer.addEventListener("drop", e => e.preventDefault());
-typer.addEventListener("blur", () => { const b = $("#exam-words"); if (b && EX.run && !EX.run.over) b.classList.add("nofocus"); });
-typer.addEventListener("focus", () => { const b = $("#exam-words"); if (b) b.classList.remove("nofocus"); });
+document.addEventListener("keydown", (e) => { const R = EX.run; if (e.key === "Escape" && R && !R.real && !R.over) finish(false, true); });
 document.addEventListener("visibilitychange", () => {
   const R = EX.run;
   if (document.hidden && R && !R.over && (R.started || R.real)) finish(true);
@@ -265,7 +203,11 @@ window.addEventListener("pagehide", () => { const R = EX.run; if (R && R.real &&
 /* ---------- end ---------- */
 async function finish(left, stopped) {
   const R = EX.run; if (!R || R.over) return;
-  R.over = true; typer.blur();
+  R.over = true;
+  const st = GAME_EXAM.stopExamGame();
+  R.correct = st.correct; R.keys = st.keys; R.words_done = st.words; R.errors = st.mistakes || 0;
+  document.body.classList.remove("exam-low");
+  showScreen("scr-exam"); try { resize(); } catch (e) {}
   const usedMin = R.real ? R.minutes : Math.max(0.1, (R.started ? performance.now() - R.t0 : 0) / 60000);
   const wpm = R.correct / 5 / usedMin, acc = R.keys ? R.correct / R.keys * 100 : 0, net = wpm * acc / 100;
   const local = { wpm: Math.round(wpm * 10) / 10, accuracy: Math.round(acc * 10) / 10, net: Math.round(net * 10) / 10 };
@@ -285,7 +227,6 @@ async function finish(left, stopped) {
 }
 
 function showResult(r) {
-  document.body.classList.remove("examining");
   const R = EX.run;
   const title = r.practice ? "PRACTICE RESULT" : r.left ? "ATTEMPT ENDED (YOU LEFT THE PAGE)" : "TEST RESULT";
   card.innerHTML = `
@@ -325,5 +266,5 @@ async function resendPending(loud) {
   return false;
 }
 
-window.EXAM = { EX, openExam, seededWords, estimateScore, onChar };
+window.EXAM = { EX, openExam, seededWords, estimateScore, finish };
 })();

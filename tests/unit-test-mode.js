@@ -53,9 +53,17 @@ r = A.post({ action: 'testStart', token: s1, code: '' }); assert.equal(r.error, 
 setTest('TestCode', 'J2-T2');
 assert.equal(cfgOf(A).test, true);
 r = A.post({ action: 'testInfo', token: s1 });
-assert(r.active && r.code === 'J2-T2' && r.minutes === 5 && r.attempts === 2 && r.used === 0 && r.full === 40 && r.bank === 'everyday', JSON.stringify(r));
+assert(r.active && r.code === undefined && r.minutes === 5 && r.attempts === 2 && r.used === 0 && r.full === 40 && r.bank === 'everyday', JSON.stringify(r));
 r = A.post({ action: 'testInfo', token: s3 }); assert(r.allowed === false && r.reason === 'no_profile');
-r = A.post({ action: 'testStart', token: s1, code: 'OLD' }); assert.equal(r.error, 'test_changed');
+r = A.post({ action: 'testStart', token: s1, code: 'OLD' }); assert.equal(r.error, 'wrong_code', 'a wrong code does not start an attempt');
+r = A.post({ action: 'testInfo', token: s1 }); assert.equal(r.used, 0, 'a wrong code uses no attempt');
+// the code is not case / space / dash sensitive
+r = A.post({ action: 'testStart', token: s3, code: ' j2 t2 ' }); assert.equal(r.error, 'no_profile', 'right code (any case / spacing) passes the code check');
+// 5 wrong codes in a row -> wait
+for (let i = 0; i < 4; i++) { r = A.post({ action: 'testStart', token: s3, code: 'X' + i }); assert.equal(r.error, 'wrong_code'); }
+r = A.post({ action: 'testStart', token: s3, code: 'X9' }); assert.equal(r.error, 'wrong_code');
+r = A.post({ action: 'testStart', token: s3, code: 'J2-T2' }); assert.equal(r.error, 'too_many_codes', 'after 5 wrong codes even the right one waits');
+console.log('test code: hidden from testInfo, wrong code refused without using an attempt, 5 wrong codes -> wait');
 r = A.post({ action: 'testStart', token: 'bad.token', code: 'J2-T2' }); assert.equal(r.error, 'session_expired');
 
 // attempt 1 (game A)

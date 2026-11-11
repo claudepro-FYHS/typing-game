@@ -33,6 +33,7 @@ function makeDecks(bankId) {
 }
 function drawWord(kind) {
   const alive = G.targets.filter(t => t.alive);
+  if (G.exam) return examDraw(alive);
   return G.decks[kind].draw({ words: new Set(alive.map(t => t.word)), first: new Set(alive.map(t => t.word[0])) });
 }
 
@@ -86,8 +87,10 @@ function startGame(opts) {
     combo: 0, maxCombo: 0, charge: 0, correct: 0, keystrokes: 0, mistakes: {}, time: 0, activeTime: 0,
     paused: false, over: false, myKills: 0, myBosses: 0, coins: 0, shake: 0, perfT: 0, perfN: 0, perfChecked: false,
     snapT: 0, statsT: 0, bossOrder: null, level: Number(opts.level) || 1, event: opts.event || "", eventMult: opts.event && EVENTS[opts.event] ? EVENTS[opts.event].bonus : 1,
-    revenge: opts.mode === "solo" ? revengeList() : {}, revengeKills: 0, comboTier: 0, slowmo: 0, awakened: false, awakeMiss: 0,
+    revenge: opts.mode === "solo" && !opts.exam ? revengeList() : {}, revengeKills: 0, comboTier: 0, slowmo: 0, awakened: false, awakeMiss: 0,
+    exam: opts.exam || null, examWords: 0, examLetters: 0,
   });
+  document.body.classList.toggle("exam-game", !!G.exam);
   G.players = opts.players.map((pi, i) => makePlayer(pi, i, n));
   G.me = player(G.myPid);
   document.body.classList.add("playing");
@@ -139,7 +142,7 @@ function onPhase(ev) {
 
 function createTarget(ev) {
   const t = { id: ev.id, kind: ev.kind, type: ev.type, word: ev.word, victim: ev.victim, travel: ev.travel, wob: ev.wob || 0,
-    progress: 0, typed: 0, alive: true, others: {}, pos: new V3(), lastX: 0 };
+    progress: 0, typed: 0, alive: true, others: {}, pos: new V3(), lastX: 0, hold: 0.7 + ((ev.wob || 0) / 6) * 0.14 };
   if (ev.kind === "boss") {
     t.mesh = MODELS.buildBoss(ev.bossIdx);
     t.mesh.position.set(0, 9, -150);
@@ -347,10 +350,11 @@ function pickVictim() {
 function spawnEnemy(forceWord, forceType) {
   const v = pickVictim(); if (!v) return;
   const d = G.diff, r = Math.random();
-  const size = forceType ? MODELS.ENEMY_TYPES[forceType].size : r < d.drone ? "short" : r < d.drone + d.heavy ? "long" : "mid";
+  const examWord = G.exam && !forceWord ? drawWord("mid") : null; // typing test: the next test word picks the enemy size
+  const size = forceType ? MODELS.ENEMY_TYPES[forceType].size : examWord ? examSize(examWord) : r < d.drone ? "short" : r < d.drone + d.heavy ? "long" : "mid";
   const types = MODELS.ENEMY_SIZES[size];
   const type = forceType || types[Math.floor(Math.random() * types.length)];
-  let word = forceWord || drawWord(size), elite = false;
+  let word = forceWord || examWord || drawWord(size), elite = false;
   const rv = Object.keys(G.revenge || {}).filter(w => !G.targets.some(t => t.word === w || t.word[0] === w[0]));
   if (!forceWord && G.mode === "solo" && rv.length && Math.random() < 0.3) { word = rv[Math.floor(Math.random() * rv.length)]; elite = true; }
   const n = nPlayers();
@@ -398,7 +402,7 @@ function resolveKill(id, pid, combo, how) {
   let coins = 0, drop = null;
   if (t.kind === "enemy") {
     coins = Math.max(1, Math.round(Math.ceil(t.word.length / 2) * G.diff.mult * (p.mech.coinMult || 1) * G.eventMult * eliteMult));
-    if (how !== "bomb" && Math.random() < 0.08 * (p.mech.dropMult || 1)) {
+    if (how !== "bomb" && !G.exam && Math.random() < 0.08 * (p.mech.dropMult || 1)) {
       const kinds = ["bomb", "freeze", "shield"].filter(k => p.items[k] < 3);
       if (kinds.length) { drop = kinds[Math.floor(Math.random() * kinds.length)]; p.items[drop]++; }
     }
@@ -406,7 +410,7 @@ function resolveKill(id, pid, combo, how) {
   emit({ e: "kill", id, by: pid, pts, coins, drop, how });
   if (drop) emitPState(p);
   // April Fools: sometimes a destroyed enemy "comes back to life" (points already counted)
-  if (G.event === "aprilfools" && how === "type" && t.kind === "enemy" && !t.elite && Math.random() < 0.15 &&
+  if (G.event === "aprilfools" && !G.exam && how === "type" && t.kind === "enemy" && !t.elite && Math.random() < 0.15 &&
       !G.targets.some(o => o.alive && o !== t && o.word[0] === t.word[0])) {
     emit({ e: "fx", pid, kind: "fool" });
     spawnEnemy(t.word, t.type);
@@ -480,6 +484,7 @@ function gameOver(reason) {
 }
 
 function tickAuthority(dt) {
+  if (G.exam) return tickExam(dt);
   if (G.phase === "intro") { G.phaseT -= dt; if (G.phaseT <= 0) setPhase("wave"); }
   else if (G.phase === "wave") {
     const enemies = G.targets.filter(t => t.kind === "enemy").length;
@@ -542,6 +547,7 @@ function update(dt) {
     }
     const f = speedFactor(t);
     if (auth) t.progress += dt / t.travel * f;
+    if (G.exam && t.progress > t.hold) t.progress = t.hold; // typing test: enemies wait at a distance until they are typed
     else if (t.netP != null) {
       const pred = t.netP + (G.time - t.netAt) / t.travel * f;
       t.progress += (pred - t.progress) * Math.min(1, dt * 8);
@@ -561,7 +567,7 @@ function update(dt) {
     }
     t.pos.copy(t.mesh.position).add(new V3(0, t.mesh.userData.top || 3, 0));
     t.el.classList.toggle("iced", f < 1);
-    if (auth && t.progress >= 1) hitPlayer(t);
+    if (auth && t.progress >= 1 && !G.exam) hitPlayer(t);
   }
 
   // pilots: aim, fire, breathe
@@ -602,6 +608,7 @@ function update(dt) {
 function threat(t) { return t.kind === "boss" ? 0.2 : t.progress + (t.victim === G.myPid ? 0.3 : 0); }
 function handleChar(ch) {
   if (!G.running || G.over || G.paused) return;
+  if (G.exam && !/^[a-zA-Z]$/.test(ch)) return; // typing test: no special or items
   if (ch === " ") return requestSpecial();
   if (ch === "1") return requestItem("bomb");
   if (ch === "2") return requestItem("freeze");
@@ -649,7 +656,7 @@ function comboCheck() {
     el.style.color = COMBO_COLORS[tier]; el.style.textShadow = `0 0 24px ${COMBO_COLORS[tier]}`;
     el.classList.remove("go"); void el.offsetWidth; el.classList.add("go");
     sfx("clear"); G.me.anim.victory = 0.6;
-    if (G.me.mech.comboItem && G.combo >= 25) requestComboItem(G.combo);
+    if (G.me.mech.comboItem && G.combo >= 25 && !G.exam) requestComboItem(G.combo);
   }
   if (tier !== G.comboTier) setComboTier(tier);
 }
@@ -686,6 +693,7 @@ function releaseLock() {
 
 const AWAKEN_AT = 20, AWAKE_MISSES = 3;
 function completeWord(t) {
+  if (G.exam) { G.examWords++; G.examLetters += t.word.length; }
   G.combo++; G.maxCombo = Math.max(G.maxCombo, G.combo);
   if (G.combo >= AWAKEN_AT && !G.awakened && G.me.mech.awaken) {
     G.awakened = true; G.awakeMiss = 0; sfx("awaken");
@@ -793,7 +801,7 @@ function showMsg(text, sub, warn) {
 }
 function hideMsg() { $("#hud-msg").classList.remove("show", "warn"); }
 
-function currentWpm() { return G.activeTime > 3 ? (G.correct / 5) / (G.activeTime / 60) : 0; }
+function currentWpm() { const c = G.exam ? G.examLetters + G.examWords : G.correct; return G.activeTime > 3 ? (c / 5) / (G.activeTime / 60) : 0; } // a test counts finished words (+ a space each), like its score
 function currentAcc() { return G.keystrokes ? Math.round(G.correct / G.keystrokes * 1000) / 10 : 0; }
 
 function updateHud() {
@@ -802,7 +810,7 @@ function updateHud() {
   if (me.maxHp > 8) hearts.push(`♥ ${me.hp}/${me.maxHp}`);
   else for (let i = 0; i < me.maxHp; i++) hearts.push(i < me.hp ? "♥" : '<span class="empty">♥</span>');
   $("#hud-hearts").innerHTML = hearts.join("") + (me.shield ? ' <span class="shield">🛡️</span>' : "");
-  $("#hud-stage").textContent = `STAGE ${G.stage}${G.stagesLimit ? "/" + G.stagesLimit : ""} · ${G.diffName.toUpperCase()}`;
+  $("#hud-stage").textContent = G.exam ? (G.exam.hud ? G.exam.hud() : "TYPING TEST") : `STAGE ${G.stage}${G.stagesLimit ? "/" + G.stagesLimit : ""} · ${G.diffName.toUpperCase()}`;
   $("#hud-score").textContent = me.score;
   $("#hud-combo").textContent = G.combo;
   for (const b of $$(".item-btn[data-item]")) {
@@ -830,6 +838,7 @@ typer.value = SENT;
 function processTyper(e) {
   if (e && e.isComposing) return;
   const v = typer.value;
+  if (G.exam && v.startsWith(SENT) && (v.length > SENT.length + 1 || (e && /Paste|Drop/.test(e.inputType || "")))) { typer.value = SENT; return; } // typing test: pasted / auto-completed text is ignored
   if (v.length < SENT.length || !v.startsWith(SENT)) { if (document.body.classList.contains("playing")) releaseLock(); }
   else for (const ch of v.slice(SENT.length)) handleChar(ch);
   typer.value = SENT;
@@ -846,6 +855,7 @@ document.addEventListener("pointerdown", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (!document.body.classList.contains("playing")) return;
+  if (e.key === "Escape" && G.exam) { e.preventDefault(); return; }
   if (e.key === "Escape") { e.preventDefault(); $("#scr-pause").classList.contains("show") ? resume() : pause(); }
   else if (e.key === "Tab") e.preventDefault();
 });
@@ -861,10 +871,10 @@ $("#btn-end").onclick = () => {
   if (G.mode === "multi") { if (G.role === "host") gameOver("ended"); else { netLeave(); finishGame(localRanking(), "left"); } }
   else gameOver("ended");
 };
-document.addEventListener("visibilitychange", () => { if (document.hidden && G.running && !G.over && G.mode === "solo") pause(); });
+document.addEventListener("visibilitychange", () => { if (document.hidden && G.running && !G.over && G.mode === "solo" && !G.exam) pause(); });
 
 function pause() {
-  if (G.over || !G.running) return;
+  if (G.over || !G.running || G.exam) return;
   const multi = G.mode === "multi";
   G.paused = !multi;
   $("#pause-title").textContent = multi ? "MENU" : "PAUSED";
@@ -875,6 +885,52 @@ function pause() {
   typer.blur();
 }
 function resume() { G.paused = false; $("#scr-pause").classList.remove("show"); focusTyper(); }
+
+/* =====================================================================
+ *  TYPING TEST IN THE GAME (js/exam.js runs the test; this is the battle)
+ *  Same battle, but: the words come in the test's fixed order, enemies stop
+ *  at a distance and wait (no damage, nobody dies), there is always enough
+ *  enemies on screen, no boss, items, specials or combo rewards.
+ *  Awakening still happens (looks only).
+ * ===================================================================== */
+const EXAM_ACTIVE = 4;
+function examSize(w) { return w.length <= 4 ? "short" : w.length <= 7 ? "mid" : "long"; }
+function examDraw(alive) {
+  // the next test word whose first letter is not on screen (so the first key still picks one enemy)
+  const q = G.exam.queue, first = new Set(alive.map(t => t.word[0])), used = new Set(alive.map(t => t.word));
+  let i = q.findIndex(w => !first.has(w[0]) && !used.has(w));
+  if (i < 0) i = 0;
+  return q.splice(i, 1)[0] || "type";
+}
+function tickExam(dt) {
+  if (G.phase === "intro") { G.phaseT -= dt; if (G.phaseT <= 0) { setPhase("wave"); if (G.exam.onStart) G.exam.onStart(); } return; }
+  if (G.phase !== "wave") return;
+  G.spawnT -= dt;
+  const enemies = G.targets.filter(t => t.kind === "enemy").length;
+  if (enemies < EXAM_ACTIVE && (G.spawnT <= 0 || enemies === 0)) { spawnEnemy(); G.spawnT = enemies < 2 ? 0.25 : 0.7; }
+}
+function startExamGame(exam) {
+  const o = soloOptions();
+  Object.assign(o, { diff: "Normal", bank: "everyday", stages: 0, event: "", exam: Object.assign({ queue: exam.words.slice() }, exam) });
+  startGame(o);
+  G.phase = "intro"; G.phaseT = 3;
+  showMsg(exam.title || "TYPING TEST", "Type the words on the enemies · they wait for you");
+}
+/* correct keys = letters of finished words + one "space" per finished word (like the plain test) */
+function examStats() {
+  if (!G.exam && !G.examWords) return { correct: 0, keys: 0, words: 0 };
+  return { correct: G.examLetters + G.examWords, keys: G.keystrokes + G.examWords, words: G.examWords, mistakes: Math.max(0, G.keystrokes - G.correct) };
+}
+function stopExamGame() {
+  if (!G.running) return examStats();
+  const st = examStats();
+  G.over = true; G.exam = null;
+  Music.stop(); setComboTier(0); G.slowmo = 0;
+  document.body.classList.remove("playing", "frozen", "slowed", "nofocus", "multi", "exam-game");
+  G.running = false; typer.blur(); clearWorld(); hideMsg();
+  return st;
+}
+window.GAME_EXAM = { startExamGame, stopExamGame, examStats };
 
 /* =====================================================================
  *  END OF GAME / RESULTS

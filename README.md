@@ -332,7 +332,7 @@ The game has **18 festival events** and switches them on by itself — you don't
 
 ## Typing test (graded)
 
-The **📝 TYPING TEST** button (under MULTIPLAYER) opens a plain, timed typing test: no enemies, items or combos, so every student is measured the same way. Anyone can **practise** (1 minute, not saved). A **real test** needs a school sign-in and an open test code.
+The **📝 TYPING TEST** button (under MULTIPLAYER) opens a timed typing test played as a battle: enemies carry the test words, **stop at a distance and wait** until they are typed (nobody gets hurt), there are always 4 on screen, and there is no boss, items, specials or combo rewards, so every student is measured the same way. Anyone can **practise** (1 minute, not saved, ESC stops). A **real test** needs a school sign-in, an open test, and the **test code**: the code is never shown on the page, the teacher tells the class (wrong codes use no attempt; 5 wrong in a row = a 10-minute wait).
 
 **Each game has its own test.** The test tabs live in this game's own spreadsheet (leave `TestSheetId` blank): a test opened in one game is recorded in that game's sheet only. After pasting the new Code.gs, run `setup` once (or let the first student who opens the test create them). It adds three tabs:
 
@@ -344,10 +344,10 @@ The **📝 TYPING TEST** button (under MULTIPLAYER) opens a plain, timed typing 
 
 (Optional) To make both games share one test and one set of results, put the same spreadsheet ID in the `TestSheetId` row of both games' Settings tab.
 
-How the test works: the student types the words in order and presses SPACE after each word. A wrong key is a mistake and the cursor waits for the right key. Everyone gets the same words in the same order for one test code (in both games).
+How the test works: type the word on an enemy to destroy it (no SPACE needed: each finished word counts one extra key, like a space). A wrong key is a mistake. Everyone gets the same words in the same order for one test code.
 
 How it is scored:
-- WPM = correct keys (letters and spaces) ÷ 5 ÷ minutes. Accuracy = correct keys ÷ all keys. **Net WPM = WPM × accuracy.**
+- WPM = correct keys (letters of finished words + one per word, like a space) ÷ 5 ÷ minutes. Accuracy = correct keys ÷ all keys. **Net WPM = WPM × accuracy.**
 - Score: Net 10 WPM = 40 points, rising in a straight line to **100 at the full-marks speed** of the student's form (default J1–J2 40, J3 and senior 45). Below 10 Net WPM: 4 points per WPM.
 - Accuracy under `TestPassAccuracy` (85 %) halves that attempt.
 - Switching to another tab or window ends the attempt (scored over the full time). Closing or reloading the page uses up the attempt. If a student had a real problem, delete that row in `TestAttempts` to give the attempt back.
