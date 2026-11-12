@@ -6,6 +6,8 @@
  *  every student is measured the same way. The teacher sets the code,
  *  minutes, attempts and scoring in the TestSettings tab (apps-script/Code.gs,
  *  "Typing test"); students must type the test code to start an attempt.
+ *  Teachers (TestTeachers tab or Admins) open, watch and close tests in the
+ *  TEACHER CONSOLE below (📝 TYPING TEST → 👩‍🏫 TEACHER CONSOLE).
  *  WPM = correct keys / 5 / minutes, where correct keys = letters of finished
  *  words + one per finished word (the "space"); accuracy = correct keys /
  *  all keys; Net WPM = WPM × accuracy. The server works out the score.
@@ -33,6 +35,18 @@ const css = `
 body.exam-game #hud-hearts, body.exam-game .item-btn, body.exam-game #special-btn, body.exam-game #btn-pause { display: none !important; }
 body.exam-game #hud-stage { font-size: 1.15em; color: #ffd34d; }
 body.exam-game.exam-low #hud-stage { color: #ff6b6b; }
+.tc-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 12px; align-items: end; }
+.tc-form label { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.tc-form > label { min-width: 0; }
+.tc-form input, .tc-form select { min-width: 0;  font: 600 16px sans-serif; padding: 7px 8px; border-radius: 8px; border: 1px solid var(--line); background: rgba(0,0,0,.35); color: inherit; }
+.tc-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tc-table th, .tc-table td { padding: 5px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.tc-table .btn { padding: 3px 9px; font-size: 12px; min-height: 0; }
+.tc-code { font: 800 44px/1.1 monospace; letter-spacing: 3px; color: #ffd34d; }
+.tc-badge { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 12px; font-weight: 700; }
+.tc-badge.open { background: #1f7a3a; } .tc-badge.closed { background: #6b6b6b; }
+.tc-live { color: #7dff9a; } .tc-warn { color: #ffb36b; }
+.tc-wrap { overflow-x: auto; }
 `;
 document.head.insertAdjacentHTML("beforeend", `<style>${css}</style>`);
 document.body.insertAdjacentHTML("beforeend", `
@@ -118,8 +132,11 @@ function renderMenu() {
   const hist = (I.history || []).length ? `<table class="exam-hist"><tr><th>Attempt</th><th>Net WPM</th><th>WPM</th><th>Accuracy</th><th>Score</th><th></th></tr>
     ${I.history.map(a => `<tr><td>${a.n}</td><td>${a.score == null ? "—" : a.net}</td><td>${a.score == null ? "—" : a.wpm}</td><td>${a.score == null ? "—" : a.acc + "%"}</td>
     <td><b>${a.score == null ? "—" : a.score}</b></td><td class="muted small">${a.status === "finished" ? "" : esc(a.status === "started" ? "not finished" : a.status)}</td></tr>`).join("")}</table>` : "";
+  const teach = I.teacher ? `<div class="exam-box"><b>👩‍🏫 Teachers:</b> open a test for your classes, watch who is taking it and download the marks.
+      <div style="margin-top:8px"><button class="btn gold" id="exam-teach" style="flex:0 0 auto">👩‍🏫 TEACHER CONSOLE 老师后台</button></div></div>` : "";
   card.innerHTML = `
     <h2>📝 TYPING TEST</h2>
+    ${teach}
     <div class="exam-box">${status}${hist}</div>
     <div class="exam-box small">
       <b>How it works</b>
@@ -136,6 +153,7 @@ function renderMenu() {
       <button class="btn" id="exam-practice" style="flex:0 0 auto">PRACTICE (${PRACTICE_MIN} MIN)</button>
     </div>`;
   $("#exam-back").onclick = () => goPlayHome();
+  if (I.teacher) $("#exam-teach").onclick = () => openTeach();
   $("#exam-practice").onclick = () => { focusGameTyper(); begin({ real: false, minutes: PRACTICE_MIN, words: seededWords("practice" + Date.now(), "everyday", 400), full, passAcc }); };
   if (canStart) {
     $("#exam-start").onclick = confirmStart;
@@ -187,6 +205,12 @@ function begin(o) {
 function loop() {
   const R = EX.run; if (!R || R.over) return;
   const left = timeLeft(R);
+  if (R.real && performance.now() - (R.pingAt || R.t0) > 10000) { // live progress for the teacher; the teacher may end the attempt
+    R.pingAt = performance.now();
+    const st = GAME_EXAM.examStats();
+    api({ action: "testPing", token: S.session.token, attemptId: R.attemptId, correct: st.correct, keys: st.keys, words: st.words }, "POST", 15000)
+      .then(r => { if (r && r.kicked && EX.run === R && !R.over) finish(true, false, true); }).catch(() => {});
+  }
   document.body.classList.toggle("exam-low", left <= 10000);
   try { updateHud(); } catch (e) {}
   if (left <= 0) return finish(false);
@@ -201,7 +225,7 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("pagehide", () => { const R = EX.run; if (R && R.real && !R.over) finish(true); });
 
 /* ---------- end ---------- */
-async function finish(left, stopped) {
+async function finish(left, stopped, kicked) {
   const R = EX.run; if (!R || R.over) return;
   R.over = true;
   const st = GAME_EXAM.stopExamGame();
@@ -216,10 +240,10 @@ async function finish(left, stopped) {
     return;
   }
   const payload = { action: "testFinish", token: S.session.token, attemptId: R.attemptId, correct: R.correct, keys: R.keys, words: R.words_done, left: !!left };
-  card.innerHTML = `<h2>${left ? "YOU LEFT THE PAGE — ATTEMPT ENDED" : "TIME'S UP!"}</h2><p>Saving your result…</p>`;
+  card.innerHTML = `<h2>${kicked ? "YOUR TEACHER ENDED THIS ATTEMPT" : left ? "YOU LEFT THE PAGE — ATTEMPT ENDED" : "TIME'S UP!"}</h2><p>Saving your result…</p>`;
   let r;
   try { r = await apiRetry(payload, "POST", 30000, 5); } catch (e) { r = null; }
-  if (r && r.ok) { localStorage.removeItem(PENDING_KEY); showResult(Object.assign({ left }, r)); }
+  if (r && r.ok) { localStorage.removeItem(PENDING_KEY); showResult(Object.assign({ left: left && r.status !== "ended by teacher" }, r)); }
   else {
     try { localStorage.setItem(PENDING_KEY, JSON.stringify({ payload, app: CFG.APPS_SCRIPT_URL, local })); } catch (e) {}
     showResult(Object.assign({ left, unsaved: true }, local));
@@ -228,7 +252,7 @@ async function finish(left, stopped) {
 
 function showResult(r) {
   const R = EX.run;
-  const title = r.practice ? "PRACTICE RESULT" : r.left ? "ATTEMPT ENDED (YOU LEFT THE PAGE)" : "TEST RESULT";
+  const title = r.practice ? "PRACTICE RESULT" : r.status === "ended by teacher" ? "ATTEMPT ENDED BY YOUR TEACHER" : r.left ? "ATTEMPT ENDED (YOU LEFT THE PAGE)" : "TEST RESULT";
   card.innerHTML = `
     <h2>${title}</h2>
     ${r.unsaved ? `<p class="err">Your result could not be saved yet. Stay online and press SEND AGAIN, or tell your teacher.</p>` : ""}
@@ -266,5 +290,150 @@ async function resendPending(loud) {
   return false;
 }
 
-window.EXAM = { EX, openExam, seededWords, estimateScore, finish };
+/* =====================================================================
+ *  TEACHER CONSOLE: open a test, watch it live, end attempts, change
+ *  attempts, close it and download the marks (Excel / CSV)
+ * ===================================================================== */
+const TC = { info: null, code: null, data: null, timer: null };
+const TC_ERR = { need_classes: "Choose at least one class (e.g. J203, J207 or J2).", bad_classes: "Classes look like J203, J207, S1S2 or a whole form like J2.",
+  bad_code: "The code needs at least 3 characters and a letter.", code_used: "That code was already used. Choose another one.",
+  not_teacher: "Your account is not on the teacher list (ask the admin).", not_your_test: "This is another teacher's test.",
+  session_expired: "Your sign-in has expired. Sign out and sign in again.", busy: "The server is busy. Try again.", not_running: "That attempt has already ended." };
+const tcErr = r => (r && TC_ERR[r.error]) || "Could not save. Try again.";
+const tcCall = (body) => apiRetry(Object.assign({ token: S.session.token }, body), "POST", 30000, 3).catch(() => ({ ok: false, error: "network" }));
+function tcStop() { if (TC.timer) clearInterval(TC.timer); TC.timer = null; }
+function tcRandomCode() { const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let c = ""; for (let i = 0; i < 5; i++) c += A[Math.floor(Math.random() * A.length)]; return /[A-Z]/.test(c) ? c.slice(0, 2) + "-" + c.slice(2) : tcRandomCode(); }
+function tcTime(ms) { if (!ms) return ""; const d = new Date(ms); return d.toLocaleDateString("en-GB") + " " + d.toTimeString().slice(0, 5); }
+
+async function openTeach() {
+  tcStop(); TC.code = null;
+  showScreen("scr-exam");
+  card.innerHTML = `<h2>👩‍🏫 TEACHER CONSOLE</h2><p class="muted">Loading…</p>`;
+  const r = await tcCall({ action: "tTests" });
+  if (!r.ok) { card.innerHTML = `<h2>👩‍🏫 TEACHER CONSOLE</h2><p class="err">${esc(tcErr(r))}</p><button class="btn ghost" id="tc-back">◀ BACK</button>`; $("#tc-back").onclick = openExam; return; }
+  TC.info = r; renderTeachList();
+}
+
+function renderTeachList() {
+  const I = TC.info, d = I.defaults;
+  const banks = Object.keys(WORD_BANKS).filter(k => !/^event_/.test(k));
+  const rows = I.tests.map(t => `<tr><td><b style="font-family:monospace;font-size:16px">${esc(t.code)}</b></td><td>${esc(t.classes)}</td>
+    ${I.admin ? `<td>${esc(t.teacherName)}</td>` : ""}<td><span class="tc-badge ${t.status}">${t.status.toUpperCase()}</span></td>
+    <td class="small">${t.minutes} min · ${t.attempts}×</td><td class="small muted">${esc(tcTime(t.created))}</td>
+    <td><button class="btn" data-open="${esc(t.code)}">MANAGE ▶</button></td></tr>`).join("");
+  card.innerHTML = `
+    <h2>👩‍🏫 TEACHER CONSOLE <span class="muted small">老师后台</span></h2>
+    <div class="exam-box"><b>Open a new test 开新测验</b>
+      <div class="tc-form" style="margin-top:8px">
+        <label>Classes 班级 <input id="tc-classes" placeholder="J203, J207  or  J2"></label>
+        <label>Minutes 时间 <input id="tc-min" type="number" min="1" max="15" value="${d.minutes}"></label>
+        <label>Attempts 次数 <input id="tc-att" type="number" min="1" max="10" value="${d.attempts}"></label>
+        <label>Word bank 词库 <select id="tc-bank">${banks.map(k => `<option value="${esc(k)}" ${k === d.bank ? "selected" : ""}>${esc(WORD_BANKS[k].name || k)}</option>`).join("")}</select></label>
+        <label>Test code 代号 <span style="display:flex;gap:6px"><input id="tc-code" value="${esc(I.suggest)}" style="flex:1;min-width:0;width:100%;text-transform:uppercase;font-family:monospace"><button class="btn ghost" id="tc-dice" title="New random code" style="flex:0 0 auto">🎲</button></span></label>
+        <button class="btn primary" id="tc-create">OPEN TEST ▶</button>
+      </div>
+      <p class="muted small" style="margin:8px 0 0">Students sign in, press 📝 TYPING TEST and type this code. Only the classes you choose can use it.</p>
+    </div>
+    <div class="exam-box"><b>${I.admin ? "All tests (admin)" : "My tests 我的测验"}</b>
+      ${I.tests.length ? `<div class="tc-wrap"><table class="tc-table"><tr><th>Code</th><th>Classes</th>${I.admin ? "<th>Teacher</th>" : ""}<th>Status</th><th>Settings</th><th>Opened</th><th></th></tr>${rows}</table></div>` : `<p class="muted">No tests yet.</p>`}
+    </div>
+    <div class="row" style="justify-content:flex-end"><button class="btn ghost" id="tc-back" style="flex:0 0 auto">◀ BACK</button></div>`;
+  $("#tc-back").onclick = () => { tcStop(); openExam(); };
+  $("#tc-dice").onclick = () => { $("#tc-code").value = tcRandomCode(); };
+  $$("[data-open]").forEach(b => b.onclick = () => openTestDetail(b.dataset.open));
+  $("#tc-create").onclick = async () => {
+    const b = $("#tc-create"); b.disabled = true; b.textContent = "OPENING…";
+    const r = await tcCall({ action: "tCreate", classes: $("#tc-classes").value, minutes: $("#tc-min").value, attempts: $("#tc-att").value, bank: $("#tc-bank").value, code: $("#tc-code").value });
+    if (!r.ok) { b.disabled = false; b.textContent = "OPEN TEST ▶"; toast(tcErr(r), 5000); return; }
+    toast(`Test ${r.test.code} is open.`, 3000);
+    openTestDetail(r.test.code);
+  };
+}
+
+async function openTestDetail(code) {
+  tcStop(); TC.code = code; TC.data = null;
+  card.innerHTML = `<h2>👩‍🏫 TEST ${esc(code)}</h2><p class="muted">Loading…</p>`;
+  await tcPoll();
+  TC.timer = setInterval(() => { if (S.currentScreen !== "scr-exam" || TC.code !== code) return tcStop(); tcPoll(); }, 5000);
+}
+async function tcPoll() {
+  const code = TC.code; if (!code) return;
+  const r = await tcCall({ action: "tMonitor", code });
+  if (TC.code !== code) return;
+  if (!r.ok) { if (!TC.data) card.innerHTML = `<h2>TEST ${esc(code)}</h2><p class="err">${esc(tcErr(r))}</p><button class="btn ghost" id="tc-list">◀ ALL TESTS</button>`, $("#tc-list").onclick = openTeach; return; }
+  TC.data = r; renderTeachDetail();
+}
+function tcStatusText(a) {
+  if (a.status === "started") {
+    if (a.lost) return `<span class="tc-warn">not finished (page closed?)</span>`;
+    const left = Math.max(0, a.secsLeft || 0), clk = Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0");
+    return `<span class="tc-live">⌨ typing · ${a.words == null ? "…" : a.words + " words · " + a.liveWpm + " WPM"} · ${clk} left</span>`;
+  }
+  return { finished: "finished", "left page": '<span class="tc-warn">left the page</span>', "ended by teacher": '<span class="tc-warn">ended by teacher</span>', "rejected (too fast)": '<span class="tc-warn">rejected (too fast)</span>' }[a.status] || esc(a.status);
+}
+function renderTeachDetail() {
+  const d = TC.data, t = d.test, list = d.students.slice().sort((a, b) => a.cls.localeCompare(b.cls) || Number(a.seat) - Number(b.seat));
+  const running = list.filter(s => s.attempts.some(a => a.status === "started" && !a.lost)).length;
+  const rows = list.map(s => {
+    const cur = s.attempts.find(a => a.status === "started" && !a.lost), last = s.attempts[s.attempts.length - 1];
+    return `<tr><td>${esc(s.cls)}</td><td>${esc(s.seat)}</td><td>${esc(s.name)}</td>
+      <td style="white-space:nowrap"><b>${s.attempts.length} / ${s.allowed}</b> <button class="btn ghost" data-extra="${esc(s.email)}" data-d="-1" title="One attempt less">−</button><button class="btn ghost" data-extra="${esc(s.email)}" data-d="1" title="One more attempt">+</button></td>
+      <td class="small">${tcStatusText(cur || last)}</td>
+      <td><b>${s.best ? s.best.score : "—"}</b>${s.best ? `<span class="muted small"> (${s.best.net} net)</span>` : ""}</td>
+      <td>${cur ? `<button class="btn" data-end="${esc(cur.id)}" data-name="${esc(s.name)}">END ATTEMPT</button>` : ""}</td></tr>`;
+  }).join("");
+  card.innerHTML = `
+    <div class="exam-top"><div><div class="muted small">TEST CODE · write it on the board</div><div class="tc-code">${esc(t.code)}</div></div>
+      <div style="text-align:right"><span class="tc-badge ${t.status}">${t.status.toUpperCase()}</span><div class="muted small" style="margin-top:4px">${esc(t.teacherName)} · opened ${esc(tcTime(t.created))}</div></div></div>
+    <div class="exam-box small" style="display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center">
+      <span>Classes: <b>${esc(t.classes)}</b> <button class="btn ghost" id="tc-edit-classes">EDIT</button></span>
+      <span>Minutes: <b>${t.minutes}</b> <button class="btn ghost" id="tc-edit-min">EDIT</button></span>
+      <span>Attempts for everyone: <b>${t.attempts}</b> <button class="btn ghost" id="tc-att-down">−</button><button class="btn ghost" id="tc-att-up">+</button></span>
+      <span>Word bank: <b>${esc((WORD_BANKS[t.bank] || {}).name || t.bank)}</b></span>
+    </div>
+    <div class="row" style="flex-wrap:wrap;gap:8px;justify-content:flex-start">
+      <button class="btn ${t.status === "open" ? "" : "primary"}" id="tc-toggle" style="flex:0 0 auto">${t.status === "open" ? "■ CLOSE TEST 关闭" : "▶ REOPEN TEST 重新开放"}</button>
+      <button class="btn gold" id="tc-report" style="flex:0 0 auto">⬇ EXCEL REPORT 下载成绩</button>
+      <button class="btn ghost" id="tc-list" style="flex:0 0 auto">◀ ALL TESTS</button>
+    </div>
+    <div class="exam-box"><b>${list.length} student${list.length === 1 ? "" : "s"}</b> · <span class="tc-live">${running} typing now</span> <span class="muted small">(updates every 5 s)</span>
+      ${list.length ? `<div class="tc-wrap"><table class="tc-table"><tr><th>Class</th><th>Seat</th><th>Name</th><th>Attempts</th><th>Now</th><th>Best</th><th></th></tr>${rows}</table></div>` : `<p class="muted">Nobody has started yet.</p>`}
+    </div>`;
+  const upd = async (body, msg) => { const r = await tcCall(Object.assign({ action: "tUpdate", code: t.code }, body)); if (!r.ok) return toast(tcErr(r), 5000); if (msg) toast(msg, 2500); tcPoll(); };
+  $("#tc-list").onclick = () => openTeach();
+  $("#tc-toggle").onclick = () => { if (t.status === "open" && !confirm(`Close test ${t.code}? Students can't start new attempts. Running attempts can still finish.`)) return; upd({ status: t.status === "open" ? "closed" : "open" }, t.status === "open" ? "Test closed." : "Test reopened."); };
+  $("#tc-att-up").onclick = () => upd({ attempts: t.attempts + 1 }, `Everyone now has ${t.attempts + 1} attempts.`);
+  $("#tc-att-down").onclick = () => { if (t.attempts > 1) upd({ attempts: t.attempts - 1 }, `Everyone now has ${t.attempts - 1} attempts.`); };
+  $("#tc-edit-classes").onclick = () => { const v = prompt("Classes (e.g. J203, J207 or J2):", t.classes); if (v != null) upd({ classes: v }, "Classes saved."); };
+  $("#tc-edit-min").onclick = () => { const v = prompt("Minutes for new attempts (1–15):", t.minutes); if (v != null) upd({ minutes: v }, "Minutes saved (for new attempts)."); };
+  $("#tc-report").onclick = () => tcReport(d);
+  $$("[data-extra]").forEach(b => b.onclick = async () => { const r = await tcCall({ action: "tExtra", code: t.code, email: b.dataset.extra, delta: Number(b.dataset.d) }); if (!r.ok) return toast(tcErr(r), 5000); tcPoll(); });
+  $$("[data-end]").forEach(b => b.onclick = async () => {
+    if (!confirm(`End ${b.dataset.name}'s attempt now? It is scored with what was typed so far and counts as used.`)) return;
+    const r = await tcCall({ action: "tEnd", code: t.code, attemptId: b.dataset.end });
+    if (!r.ok) return toast(tcErr(r), 5000);
+    toast(`Attempt ended: ${r.score} / 100`, 3000); tcPoll();
+  });
+}
+
+/* the marks as a CSV file that opens in Excel (UTF-8 with BOM, so Chinese names show correctly) */
+function tcReport(d) {
+  const t = d.test, list = d.students.slice().sort((a, b) => a.cls.localeCompare(b.cls) || Number(a.seat) - Number(b.seat));
+  const maxN = Math.max(1, ...list.map(s => s.attempts.length));
+  const head = ["Test code", "Class", "Seat", "Name", "Email", "Attempts used", "Attempts allowed", "Best score", "Best Net WPM", "Best WPM", "Best accuracy (%)"];
+  for (let i = 1; i <= maxN; i++) head.push(`Attempt ${i} score`, `Attempt ${i} Net WPM`, `Attempt ${i} status`);
+  const rows = [head];
+  for (const s of list) {
+    const row = [t.code, s.cls, s.seat, s.name, s.email, s.attempts.length, s.allowed, s.best ? s.best.score : "", s.best ? s.best.net : "", s.best ? s.best.wpm : "", s.best ? s.best.acc : ""];
+    for (let i = 0; i < maxN; i++) { const a = s.attempts[i]; row.push(a ? (a.score == null ? "" : a.score) : "", a && a.score != null ? a.net : "", a ? a.status : ""); }
+    rows.push(row);
+  }
+  const csv = "\ufeff" + rows.map(r => r.map(v => { v = String(v == null ? "" : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(",")).join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  a.download = `typing-test-${t.code}-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+window.EXAM = { EX, TC, openExam, openTeach, seededWords, estimateScore, finish };
 })();

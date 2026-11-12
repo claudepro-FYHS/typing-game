@@ -52,7 +52,7 @@ function makeEnv(opts = {}) {
         return { getResponseCode: () => 200, getContentText: () => JSON.stringify({ aud: settings.GoogleClientId, email, email_verified: 'true', hd: email.split('@')[1] }) };
       },
     },
-    CacheService: { getScriptCache: () => ({ get: k => cache[k] || null, put: (k, v) => { cache[k] = v; }, remove: k => { delete cache[k]; } }) },
+    CacheService: { getScriptCache: () => ({ get: k => cache[k] || null, put: (k, v) => { cache[k] = v; }, remove: k => { delete cache[k]; }, getAll: ks => { const o = {}; for (const k of ks) if (cache[k] != null) o[k] = cache[k]; return o; } }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, tryLock() { return !ctx.__lockBusy; }, releaseLock() {} }) },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ content: s, setMimeType() { return this; } }) },
     Logger: { log: (...a) => opts.verbose && console.log(...a) },

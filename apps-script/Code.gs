@@ -223,6 +223,13 @@ function doPost(e) {
       case 'testInfo': return json_(testInfo_(body));
       case 'testStart': return json_(withLock_(function () { return testStart_(body); }));
       case 'testFinish': return json_(withLock_(function () { return testFinish_(body); }));
+      case 'testPing': return json_(testPing_(body));
+      case 'tTests': return json_(tTests_(body));
+      case 'tMonitor': return json_(tMonitor_(body));
+      case 'tCreate': return json_(withLock_(function () { return tCreate_(body); }));
+      case 'tUpdate': return json_(withLock_(function () { return tUpdate_(body); }));
+      case 'tExtra': return json_(withLock_(function () { return tExtra_(body); }));
+      case 'tEnd': return json_(withLock_(function () { return tEnd_(body); }));
       case 'config': return json_(cachedConfig_());
       case 'leaderboard': return json_(getLeaderboard_());
     }
@@ -320,14 +327,14 @@ function login_(body) {
 // Only reads the sheet, so many students can sign in at the same time. The lock is taken
 // only when a teacher's coin gift has to be written to the player's row.
 function refreshPlayer_(email) {
-  var admin = isAdmin_(email);
+  var admin = isAdmin_(email), teacher = admin || isTestTeacher_(email); // teacher: may open typing tests (and pick STAFF)
   var found = findPlayer_(email);
-  if (!found) return { ok: true, player: null, admin: admin, gift: 0 };
-  if (!hasNewGift_(found.data)) return { ok: true, player: publicPlayer_(found.data, admin), admin: admin, gift: 0 };
+  if (!found) return { ok: true, player: null, admin: admin, teacher: teacher, gift: 0 };
+  if (!hasNewGift_(found.data)) return { ok: true, player: publicPlayer_(found.data, admin), admin: admin, teacher: teacher, gift: 0 };
   return withLock_(function () {
     var fresh = findPlayer_(email);
     var gift = applyGifts_(fresh);
-    return { ok: true, player: publicPlayer_(fresh.data, admin), admin: admin, gift: gift };
+    return { ok: true, player: publicPlayer_(fresh.data, admin), admin: admin, teacher: teacher, gift: gift };
   });
 }
 
@@ -506,7 +513,7 @@ function saveProfile_(body) {
     cls = OTHER_CLASS; seat = '';
     if (name.length > 40) return { ok: false, error: 'bad_name', message: 'Name: max 40 characters.' };
   } else {
-    if (s.classList.indexOf(cls) === -1 && !(admin && cls === STAFF_CLASS)) return { ok: false, error: 'bad_class', message: 'Please choose your class.' };
+    if (s.classList.indexOf(cls) === -1 && !((admin || isTestTeacher_(email)) && cls === STAFF_CLASS)) return { ok: false, error: 'bad_class', message: 'Please choose your class.' };
     if (!/^\d{1,2}$/.test(seat) || Number(seat) < 1) return { ok: false, error: 'bad_seat', message: 'Seat number must be 1–99.' };
     if (name.length < 1 || name.length > 40) return { ok: false, error: 'bad_name', message: 'Please enter your name (max 40 characters).' };
   }
@@ -977,36 +984,37 @@ function checkNickname_(nick) {
 /* ------------------------------------------------------------------ */
 /*  Typing test 打字测验 (the same code is in both typing games)       */
 /* ------------------------------------------------------------------ */
-// The test settings and results live in ONE spreadsheet that both games can use:
-// Settings → TestSheetId (blank = this spreadsheet). Tabs: TestSettings, TestAttempts, TestResults.
+// Teachers open tests on the website (📝 TYPING TEST → TEACHER CONSOLE). Who may: the emails in the
+// TestTeachers tab, plus the Admins (who see every teacher's tests). Tabs (in this spreadsheet, or in
+// Settings → TestSheetId): TestSettings (defaults + scoring), Tests (one row per test the teachers
+// opened), TestTeachers, TestExtra (extra attempts per student), TestAttempts, TestResults.
 // Scoring: Net WPM = WPM × accuracy. Net 10 = 40 points, rising in a straight line to 100 at the
 // full-marks speed of the student's form (TestFullWPM, never below 40). Accuracy under
 // TestPassAccuracy halves that attempt. The best attempt counts.
 var SHEET_TEST_SETTINGS = 'TestSettings', SHEET_TEST_ATTEMPTS = 'TestAttempts', SHEET_TEST_RESULTS = 'TestResults';
+var SHEET_TESTS = 'Tests', SHEET_TEST_TEACHERS = 'TestTeachers', SHEET_TEST_EXTRA = 'TestExtra';
 var TEST_ATTEMPT_HEADERS = ['Time', 'Test Code', 'Attempt ID', 'Email', 'Class', 'Seat No', 'Name', 'Game', 'Attempt No', 'Status',
   'Start (ms)', 'Minutes', 'Seconds', 'WPM', 'Accuracy (%)', 'Net WPM', 'Score', 'Keys', 'Errors', 'Words'];
 var TEST_RESULT_HEADERS = ['Test Code', 'Class', 'Seat No', 'Name', 'Email', 'Attempts Used', 'Score (best)', 'Net WPM', 'WPM',
   'Accuracy (%)', 'Game', 'Updated'];
+var TESTS_HEADERS = ['Code', 'Teacher', 'Classes', 'Minutes', 'Attempts', 'Word Bank', 'Status', 'Created', 'Closed'];
+var TEST_TEACHER_HEADERS = ['Email', 'Name', 'Note'];
+var TEST_EXTRA_HEADERS = ['Test Code', 'Email', 'Extra Attempts', 'Updated', 'By'];
 var TEST_DEFAULTS = [
-  ['TestCode', '', '测验代号（要有英文字母）。一个代号：例如 J2-K7（配合 TestClasses）。几班各用一个代号：J2-K7 = J203, J207; S1-M3 = S1S2（这样写时不看 TestClasses）。留空 = 没有测验。换新代号 = 新的一次测验'],
-  ['TestMinutes', '5', '每次测验几分钟'],
-  ['TestAttempts', '2', '每人几次机会，取最高分'],
-  ['TestWordBank', 'everyday', '词库 ID（例如 everyday）。同一个代号 = 每个人同样的单字、同样的顺序'],
+  ['TestMinutes', '5', '新测验的预设时间（分钟）。老师在网站开考时可以改'],
+  ['TestAttempts', '2', '新测验的预设次数（取最高分）。老师在网站开考时可以改'],
+  ['TestWordBank', 'everyday', '新测验的预设词库 ID'],
   ['TestFullWPM', 'J1:40, J2:40, J3:45, S1:45, S2:45, S3:45', '各年段 Net WPM 达到多少拿满分（最低 40）'],
   ['TestPassAccuracy', '85', '准确率低于这个 %，该次分数减半'],
-  ['TestClasses', '', '只有一个代号时用：只限这些年段或班级考，例如 J2, S1S2。留空 = 所有学生都可以考'],
 ];
 // how-to note written next to the settings (column E of TestSettings)
 var TEST_HELP = [
-  ['📝 如何开测验'],
-  ['1. 在 TestCode（B2）填代号，约 30 秒后生效。'],
-  ['   · 全部考生用同一个代号：J2-K7，再在 TestClasses（B8）填班级，例如 J203, J207（留空 = 所有学生）。'],
-  ['   · 每班各用一个代号：J2-K7 = J203, J207; S1-M3 = S1S2（用分号隔开，这样写时 TestClasses 不用填）。'],
-  ['2. 把代号写在白板上。学生：📝 TYPING TEST → 输入代号 → START ATTEMPT。'],
-  ['3. 考完把 TestCode 清空（关闭测验）。'],
-  ['成绩：TestResults 分页的 Score (best)（2 次取最高）。'],
-  ['学生当机 / 断电：在 TestAttempts 删掉他那一行，就还他一次机会。'],
-  ['换新代号 = 新的一次测验，每人重新有 2 次机会；同一份测验的下一班不用改代号。'],
+  ['📝 如何让老师开测验'],
+  ['1. 在 TestTeachers 分页加一行：老师的学校 email（A 栏）、名字（B 栏）。'],
+  ['2. 老师用这个 email 登入游戏网站 → 📝 TYPING TEST → 👩‍🏫 TEACHER CONSOLE。'],
+  ['3. 老师在网站开考：选班级、时间、次数、词库、代号；可看到谁在考、结束某人的作答、加次数、关闭测验、下载 Excel 成绩。'],
+  ['Admins 分页的人可以看到所有老师的测验。'],
+  ['这一页只放预设值和评分规则；测验记录在 Tests / TestAttempts / TestResults 分页，请不要手动修改。'],
 ];
 
 function testBook_() {
@@ -1024,14 +1032,20 @@ function setupTest_() {
   var have = st.getDataRange().getValues().map(function (r) { return String(r[0]); });
   TEST_DEFAULTS.forEach(function (row) { if (have.indexOf(row[0]) === -1) st.appendRow(row); });
   if (!String(st.getRange(1, 5).getValue())) st.getRange(1, 5, TEST_HELP.length, 1).setValues(TEST_HELP);
+  ensureSheet_(ss, SHEET_TESTS, TESTS_HEADERS);
+  ensureSheet_(ss, SHEET_TEST_TEACHERS, TEST_TEACHER_HEADERS);
+  ensureSheet_(ss, SHEET_TEST_EXTRA, TEST_EXTRA_HEADERS);
   ensureSheet_(ss, SHEET_TEST_ATTEMPTS, TEST_ATTEMPT_HEADERS);
   ensureSheet_(ss, SHEET_TEST_RESULTS, TEST_RESULT_HEADERS);
-  CacheService.getScriptCache().remove('testcfg');
+  testCfgClear_();
 }
 
+function testCfgClear_() { CacheService.getScriptCache().remove('testcfg2'); }
+
+// settings + the open tests (cached 30 s; every teacher change clears it)
 function testConfig_() {
-  var cache = CacheService.getScriptCache(), hit = cache.get('testcfg');
-  if (hit) { var c0 = JSON.parse(hit); if (c0.tests) return c0; } // (an older cached format is rebuilt)
+  var cache = CacheService.getScriptCache(), hit = cache.get('testcfg2');
+  if (hit) return JSON.parse(hit);
   var ss = testBook_(), st = ss.getSheetByName(SHEET_TEST_SETTINGS);
   if (!st) { setupTest_(); st = ss.getSheetByName(SHEET_TEST_SETTINGS); }
   var raw = {};
@@ -1042,15 +1056,28 @@ function testConfig_() {
     if (m) full[m[1].toUpperCase()] = Math.max(40, Number(m[2]));
   });
   var cfg = {
-    tests: parseTests_(raw.TestCode, raw.TestClasses),
     minutes: clamp_(Number(raw.TestMinutes) || 5, 1, 15),
     attempts: clamp_(Math.round(Number(raw.TestAttempts) || 2), 1, 10),
     bank: String(raw.TestWordBank || '').trim() || 'everyday',
     full: full,
     passAcc: clamp_(raw.TestPassAccuracy === '' || raw.TestPassAccuracy == null ? 85 : Number(raw.TestPassAccuracy) || 0, 0, 100),
   };
-  cache.put('testcfg', JSON.stringify(cfg), 30);
+  cfg.tests = testRows_(ss).filter(function (t) { return t.status === 'open'; });
+  cache.put('testcfg2', JSON.stringify(cfg), 30);
   return cfg;
+}
+
+// every test in the Tests tab (oldest first)
+function testRows_(ss) {
+  var sh = ensureSheet_(ss, SHEET_TESTS, TESTS_HEADERS), v = sh.getDataRange().getValues(), out = [];
+  for (var i = 1; i < v.length; i++) {
+    var r = v[i]; if (!String(r[0] || '').trim()) continue;
+    out.push({ row: i + 1, code: String(r[0]).trim(), teacher: String(r[1] || '').toLowerCase(), classes: splitClasses_(r[2]),
+      minutes: clamp_(Number(r[3]) || 5, 1, 15), attempts: clamp_(Math.round(Number(r[4]) || 2), 1, 10),
+      bank: String(r[5] || '').trim() || 'everyday', status: String(r[6] || '').trim().toLowerCase() === 'open' ? 'open' : 'closed',
+      created: r[7] instanceof Date ? r[7].getTime() : Number(r[7]) || 0 });
+  }
+  return out;
 }
 
 // full-marks Net WPM for a class: the longest matching prefix in TestFullWPM (J2 matches J205), at least 40
@@ -1070,28 +1097,14 @@ function testScore_(net, acc, full, passAcc) {
 // the test code a student types: case, spaces and the kind of dash don't matter
 var TEST_CODE_TRIES = 5; // wrong codes in a row before a 10-minute wait
 function normCode_(c) { return String(c == null ? '' : c).toUpperCase().replace(/[\s\-_－—–]+/g, ''); }
-
-// TestCode holds one code (for the classes in TestClasses, blank = everyone) or several groups:
-// "J2-K7 = J203, J207; S1-M3 = S1S2" (groups split by ; or new lines; "CODE =" = everyone; a part without "=" uses TestClasses)
 function splitClasses_(s) { return String(s || '').toUpperCase().split(/[,，、;；\s]+/).filter(String); }
-function parseTests_(codeCell, classesCell) {
-  var text = String(codeCell || '').trim(), out = [];
-  if (!text) return out;
-  if (!/[=＝]/.test(text)) return [{ code: text.slice(0, 40), classes: splitClasses_(classesCell) }];
-  text.split(/[;；\n]+/).forEach(function (part) {
-    var m = part.match(/^\s*([^=＝]+?)\s*[=＝]\s*(.*)$/);
-    if (m && m[1].trim()) out.push({ code: m[1].trim().slice(0, 40), classes: splitClasses_(m[2]) });
-    else if (!m && part.trim()) out.push({ code: part.trim().slice(0, 40), classes: splitClasses_(classesCell) }); // no "=": like a single code
-  });
-  return out;
-}
 function classOk_(p, classes) {
   if (!classes.length) return true;
   var c = String(p.cls || '').toUpperCase();
   return classes.some(function (x) { return c === x || c.indexOf(x) === 0; });
 }
-// the tests this student may take now
-function testsFor_(p, cfg) { return cfg.tests.filter(function (t) { return classOk_(p, t.classes); }); }
+// the open tests this student may take now (newest first)
+function testsFor_(p, cfg) { return cfg.tests.filter(function (t) { return classOk_(p, t.classes); }).reverse(); }
 
 function testAttempts_(ss) {
   var sh = ensureSheet_(ss, SHEET_TEST_ATTEMPTS, TEST_ATTEMPT_HEADERS);
@@ -1104,11 +1117,14 @@ function testMine_(values, code, email) {
   for (var i = 1; i < values.length; i++) {
     var r = values[i];
     if (String(r[1]) !== code || String(r[3]).toLowerCase() !== email) continue;
-    out.push({ row: i + 1, id: String(r[2]), n: Number(r[8]) || out.length + 1, status: String(r[9]), start: Number(r[10]) || 0,
-      minutes: Number(r[11]) || 0, wpm: Number(r[13]) || 0, acc: Number(r[14]) || 0, net: Number(r[15]) || 0,
-      score: r[16] === '' || r[16] == null ? null : Number(r[16]), game: String(r[7]) });
+    out.push(testAttemptOf_(r, i, out.length));
   }
   return out;
+}
+function testAttemptOf_(r, i, k) {
+  return { row: i + 1, id: String(r[2]), n: Number(r[8]) || k + 1, status: String(r[9]), start: Number(r[10]) || 0,
+    minutes: Number(r[11]) || 0, wpm: Number(r[13]) || 0, acc: Number(r[14]) || 0, net: Number(r[15]) || 0,
+    score: r[16] === '' || r[16] == null ? null : Number(r[16]), game: String(r[7]) };
 }
 
 function testBestOf_(mine) {
@@ -1116,6 +1132,14 @@ function testBestOf_(mine) {
   mine.forEach(function (a) { if (a.score != null && (!best || a.score > best.score || (a.score === best.score && a.net > best.net))) best = a; });
   return best;
 }
+
+// extra attempts a teacher gave (code -> email -> n)
+function testExtraMap_(ss, code) {
+  var sh = ensureSheet_(ss, SHEET_TEST_EXTRA, TEST_EXTRA_HEADERS), v = sh.getDataRange().getValues(), map = {};
+  for (var i = 1; i < v.length; i++) if (String(v[i][0]) === code) map[String(v[i][1]).toLowerCase()] = { n: Number(v[i][2]) || 0, row: i + 1 };
+  return map;
+}
+function testAllowed_(test, extraMap, email) { var e = extraMap[email]; return Math.max(0, test.attempts + (e ? e.n : 0)); }
 
 // one row per student and test in TestResults (written whenever an attempt starts or ends)
 function testUpsertResult_(ss, code, email, p, mine) {
@@ -1132,12 +1156,13 @@ function testPublic_(mine) {
   return mine.map(function (a) { return { n: a.n, status: a.status, score: a.score, net: a.net, wpm: a.wpm, acc: a.acc }; });
 }
 
+/* ---------- students ---------- */
 function testInfo_(body) {
   var email = checkToken_(body.token);
   if (!email) return { ok: false, error: 'session_expired' };
   var cfg = testConfig_();
   // the code itself is never sent: students must type it (from the teacher) to start
-  var out = { ok: true, active: cfg.tests.length > 0, minutes: cfg.minutes, attempts: cfg.attempts, bank: cfg.bank, passAcc: cfg.passAcc };
+  var out = { ok: true, active: cfg.tests.length > 0, passAcc: cfg.passAcc, teacher: isTestTeacher_(email) };
   var found = findPlayer_(email);
   if (!found) { out.allowed = false; out.reason = 'no_profile'; return out; }
   var mineTests = testsFor_(found.data, cfg);
@@ -1145,7 +1170,9 @@ function testInfo_(body) {
   out.full = testFullWpm_(found.data.cls, cfg);
   out.history = [];
   if (mineTests.length) {
-    var mine = testMine_(testAttempts_(testBook_()).values, mineTests[0].code, email);
+    var test = mineTests[0], ss = testBook_();
+    var mine = testMine_(testAttempts_(ss).values, test.code, email);
+    out.minutes = test.minutes; out.attempts = testAllowed_(test, testExtraMap_(ss, test.code), email);
     out.used = mine.length; out.history = testPublic_(mine);
     var b = testBestOf_(mine); out.best = b ? b.score : null;
   }
@@ -1167,14 +1194,41 @@ function testStart_(body) {
   var p = found.data;
   if (!classOk_(p, test.classes)) return { ok: false, error: 'not_your_class' };
   var ss = testBook_(), t = testAttempts_(ss), mine = testMine_(t.values, code, email);
-  if (mine.length >= cfg.attempts) return { ok: false, error: 'no_attempts', used: mine.length };
+  var allowed = testAllowed_(test, testExtraMap_(ss, code), email);
+  if (mine.length >= allowed) return { ok: false, error: 'no_attempts', used: mine.length };
   var id = Utilities.getUuid(), n = mine.length + 1, now = Date.now();
-  t.sh.appendRow([new Date(now), code, id, email, p.cls, p.seat, p.name, GAME_TITLE, n, 'started', now, cfg.minutes,
+  t.sh.appendRow([new Date(now), code, id, email, p.cls, p.seat, p.name, GAME_TITLE, n, 'started', now, test.minutes,
     '', '', '', '', '', '', '', '']);
-  mine.push({ id: id, n: n, status: 'started', start: now, minutes: cfg.minutes, score: null, net: 0, wpm: 0, acc: 0, game: GAME_TITLE });
+  mine.push({ id: id, n: n, status: 'started', start: now, minutes: test.minutes, score: null, net: 0, wpm: 0, acc: 0, game: GAME_TITLE });
   testUpsertResult_(ss, code, email, p, mine);
-  return { ok: true, attemptId: id, attemptNo: n, attempts: cfg.attempts, minutes: cfg.minutes, bank: cfg.bank, code: code,
+  return { ok: true, attemptId: id, attemptNo: n, attempts: allowed, minutes: test.minutes, bank: test.bank, code: code,
     full: testFullWpm_(p.cls, cfg), passAcc: cfg.passAcc };
+}
+
+// every ~10 s during a test: live progress for the teacher's screen (cache only, no lock, no sheet write)
+function testPing_(body) {
+  var email = checkToken_(body.token);
+  if (!email) return { ok: false, error: 'session_expired' };
+  var id = String(body.attemptId || ''); if (!id) return { ok: false, error: 'no_attempt' };
+  var cache = CacheService.getScriptCache();
+  cache.put('live:' + id, JSON.stringify({ c: Math.max(0, Number(body.correct) || 0), k: Math.max(0, Number(body.keys) || 0),
+    w: Math.max(0, Number(body.words) || 0), t: Date.now() }), 1800);
+  return { ok: true, kicked: !!cache.get('kick:' + id) };
+}
+
+// scores an attempt over `minutes` and writes it (used by testFinish_ and by the teacher ending an attempt)
+function testScoreRow_(ss, t, ri, r, cfg, minutes, secs, correct, keys, words, status) {
+  var email = String(r[3]).toLowerCase(), full = testFullWpm_(r[4], cfg);
+  var wpm = correct / 5 / minutes, acc = keys ? correct / keys * 100 : 0;
+  if (wpm > 220) { status = 'rejected (too fast)'; wpm = 0; acc = 0; }
+  var net = wpm * acc / 100, score = testScore_(net, acc, full, cfg.passAcc);
+  wpm = round1_(wpm); acc = round1_(acc); net = round1_(net);
+  t.sh.getRange(ri + 1, 10, 1, 11).setValues([[status, Number(r[10]), round1_(minutes), secs, wpm, acc, net, score, keys, keys - correct, words]]);
+  var mine = testMine_(t.values, String(r[1]), email), id = String(r[2]);
+  mine.forEach(function (a) { if (a.id === id) { a.status = status; a.wpm = wpm; a.acc = acc; a.net = net; a.score = score; } });
+  var found = findPlayer_(email), p = found ? found.data : { cls: r[4], seat: r[5], name: r[6] };
+  testUpsertResult_(ss, String(r[1]), email, p, mine);
+  return { wpm: wpm, acc: acc, net: net, score: score, status: status, full: full, mine: mine };
 }
 
 function testFinish_(body) {
@@ -1184,30 +1238,177 @@ function testFinish_(body) {
   for (var i = 1; i < t.values.length; i++) if (String(t.values[i][2]) === id && String(t.values[i][3]).toLowerCase() === email) { r = t.values[i]; ri = i; break; }
   if (!r) return { ok: false, error: 'no_attempt' };
   var code = String(r[1]), cfg = testConfig_(), minutes = Number(r[11]) || cfg.minutes;
-  var mine = testMine_(t.values, code, email);
-  var full = testFullWpm_(r[4], cfg);
-  if (String(r[9]) !== 'started') { // sent twice (network retry): answer with what is saved
-    var b0 = testBestOf_(mine);
-    return { ok: true, already: true, attemptNo: Number(r[8]), attempts: cfg.attempts, wpm: Number(r[13]) || 0, accuracy: Number(r[14]) || 0,
-      net: Number(r[15]) || 0, score: Number(r[16]) || 0, best: b0 ? b0.score : null, full: full, history: testPublic_(mine) };
+  var test = testRows_(ss).filter(function (x) { return x.code === code; })[0];
+  var allowed = test ? testAllowed_(test, testExtraMap_(ss, code), email) : Number(r[8]) || 1;
+  if (String(r[9]) !== 'started') { // sent twice (network retry) or ended by the teacher: answer with what is saved
+    var mine0 = testMine_(t.values, code, email), b0 = testBestOf_(mine0);
+    return { ok: true, already: true, status: String(r[9]), attemptNo: Number(r[8]), attempts: allowed, wpm: Number(r[13]) || 0, accuracy: Number(r[14]) || 0,
+      net: Number(r[15]) || 0, score: Number(r[16]) || 0, best: b0 ? b0.score : null, full: testFullWpm_(r[4], cfg), history: testPublic_(mine0) };
   }
   var secs = Math.round((Date.now() - Number(r[10])) / 1000), left = !!body.left;
   if (!left && secs < minutes * 60 - 20) return { ok: false, error: 'too_early' };
   var keys = clamp_(Math.round(Number(body.keys) || 0), 0, 200000);
   var correct = clamp_(Math.round(Number(body.correct) || 0), 0, keys);
   var words = clamp_(Math.round(Number(body.words) || 0), 0, 20000);
-  var wpm = correct / 5 / minutes, acc = keys ? correct / keys * 100 : 0, status = left ? 'left page' : 'finished';
-  if (wpm > 220) { status = 'rejected (too fast)'; wpm = 0; acc = 0; }
-  var net = wpm * acc / 100, score = testScore_(net, acc, full, cfg.passAcc);
-  wpm = round1_(wpm); acc = round1_(acc); net = round1_(net);
-  t.sh.getRange(ri + 1, 10, 1, 11).setValues([[status, Number(r[10]), minutes, secs, wpm, acc, net, score, keys, keys - correct, words]]);
-  mine.forEach(function (a) { if (a.id === id) { a.status = status; a.wpm = wpm; a.acc = acc; a.net = net; a.score = score; } });
-  var found = findPlayer_(email), p = found ? found.data : { cls: r[4], seat: r[5], name: r[6] };
-  testUpsertResult_(ss, code, email, p, mine);
-  var b = testBestOf_(mine);
-  return { ok: true, attemptNo: Number(r[8]), attempts: cfg.attempts, wpm: wpm, accuracy: acc, net: net, score: score, status: status,
-    best: b ? b.score : null, full: full, passAcc: cfg.passAcc, history: testPublic_(mine) };
+  var s = testScoreRow_(ss, t, ri, r, cfg, minutes, secs, correct, keys, words, left ? 'left page' : 'finished');
+  var b = testBestOf_(s.mine);
+  return { ok: true, attemptNo: Number(r[8]), attempts: allowed, wpm: s.wpm, accuracy: s.acc, net: s.net, score: s.score, status: s.status,
+    best: b ? b.score : null, full: s.full, passAcc: cfg.passAcc, history: testPublic_(s.mine) };
 }
 
 // for the config: is a test running right now? (never breaks the config if the test sheet can't be opened)
 function testActive_() { try { return testConfig_().tests.length > 0; } catch (e) { return false; } }
+
+/* ---------- teachers (TEACHER CONSOLE on the website) ---------- */
+function isTestTeacher_(email) {
+  email = String(email || '').toLowerCase(); if (!email) return false;
+  if (isAdmin_(email)) return true;
+  try {
+    var sh = testBook_().getSheetByName(SHEET_TEST_TEACHERS); if (!sh) return false;
+    return sh.getDataRange().getValues().slice(1).some(function (r) { return String(r[0] || '').trim().toLowerCase() === email; });
+  } catch (e) { return false; }
+}
+// the signed-in teacher, or an error
+function testTeacher_(body) {
+  var email = checkToken_(body.token);
+  if (!email) return { error: 'session_expired' };
+  if (!isTestTeacher_(email)) return { error: 'not_teacher' };
+  return { email: email, admin: isAdmin_(email) };
+}
+function testTeacherNames_(ss) {
+  var sh = ensureSheet_(ss, SHEET_TEST_TEACHERS, TEST_TEACHER_HEADERS), map = {};
+  sh.getDataRange().getValues().slice(1).forEach(function (r) { var e = String(r[0] || '').trim().toLowerCase(); if (e) map[e] = String(r[1] || '').trim(); });
+  return map;
+}
+function testPublicTest_(t, names) {
+  return { code: t.code, teacher: t.teacher, teacherName: (names && names[t.teacher]) || t.teacher, classes: t.classes.join(', '),
+    minutes: t.minutes, attempts: t.attempts, bank: t.bank, status: t.status, created: t.created };
+}
+// a test this teacher may manage (own tests; admins: all)
+function testOwned_(ss, T, code) {
+  var test = testRows_(ss).filter(function (x) { return x.code === String(code || ''); })[0];
+  if (!test) return { error: 'no_such_test' };
+  if (!T.admin && test.teacher !== T.email) return { error: 'not_your_test' };
+  return { test: test };
+}
+var TEST_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O, 1/I
+function testNewCode_(ss) {
+  var used = {}; testRows_(ss).forEach(function (t) { used[normCode_(t.code)] = true; });
+  for (var k = 0; k < 50; k++) {
+    var c = ''; for (var i = 0; i < 5; i++) c += TEST_CODE_CHARS.charAt(Math.floor(Math.random() * TEST_CODE_CHARS.length));
+    c = c.slice(0, 2) + '-' + c.slice(2);
+    if (!used[normCode_(c)] && /[A-Z]/.test(c)) return c;
+  }
+  return 'T-' + Date.now().toString(36).toUpperCase();
+}
+
+function tTests_(body) {
+  var T = testTeacher_(body); if (T.error) return { ok: false, error: T.error };
+  var ss = testBook_(), cfg = testConfig_(), names = testTeacherNames_(ss);
+  var list = testRows_(ss).filter(function (t) { return T.admin || t.teacher === T.email; }).reverse().map(function (t) { return testPublicTest_(t, names); });
+  return { ok: true, admin: T.admin, email: T.email, tests: list, suggest: testNewCode_(ss),
+    defaults: { minutes: cfg.minutes, attempts: cfg.attempts, bank: cfg.bank }, full: cfg.full, passAcc: cfg.passAcc };
+}
+
+function tCreate_(body) {
+  var T = testTeacher_(body); if (T.error) return { ok: false, error: T.error };
+  var ss = testBook_(), cfg = testConfig_();
+  var classes = splitClasses_(body.classes);
+  if (!classes.length) return { ok: false, error: 'need_classes' };
+  if (classes.some(function (c) { return !/^[JS][1-6][A-Z0-9]*$/.test(c); })) return { ok: false, error: 'bad_classes' };
+  var code = String(body.code || '').trim().toUpperCase().slice(0, 20) || testNewCode_(ss);
+  if (!/[A-Z]/.test(code) || normCode_(code).length < 3) return { ok: false, error: 'bad_code' };
+  if (testRows_(ss).some(function (t) { return normCode_(t.code) === normCode_(code); })) return { ok: false, error: 'code_used' };
+  var minutes = clamp_(Math.round(Number(body.minutes) || cfg.minutes), 1, 15), attempts = clamp_(Math.round(Number(body.attempts) || cfg.attempts), 1, 10);
+  var bank = String(body.bank || cfg.bank).replace(/[^a-zA-Z0-9_]/g, '').slice(0, 30) || 'everyday';
+  ensureSheet_(ss, SHEET_TESTS, TESTS_HEADERS).appendRow([code, T.email, classes.join(', '), minutes, attempts, bank, 'open', new Date(), '']);
+  testCfgClear_();
+  var test = testRows_(ss).filter(function (x) { return x.code === code; })[0];
+  return { ok: true, test: testPublicTest_(test, testTeacherNames_(ss)) };
+}
+
+// change a test: status (open / closed), attempts, minutes (new attempts only), classes
+function tUpdate_(body) {
+  var T = testTeacher_(body); if (T.error) return { ok: false, error: T.error };
+  var ss = testBook_(), o = testOwned_(ss, T, body.code); if (o.error) return { ok: false, error: o.error };
+  var test = o.test, sh = ss.getSheetByName(SHEET_TESTS);
+  if (body.status === 'open' || body.status === 'closed') {
+    if (body.status === 'open' && testConfig_().tests.some(function (x) { return x.code !== test.code && normCode_(x.code) === normCode_(test.code); })) return { ok: false, error: 'code_used' };
+    sh.getRange(test.row, 7, 1, 3).setValues([[body.status, new Date(test.created || Date.now()), body.status === 'closed' ? new Date() : '']]);
+  }
+  if (body.attempts != null) sh.getRange(test.row, 5).setValues([[clamp_(Math.round(Number(body.attempts) || 1), 1, 10)]]);
+  if (body.minutes != null) sh.getRange(test.row, 4).setValues([[clamp_(Math.round(Number(body.minutes) || 5), 1, 15)]]);
+  if (body.classes != null) {
+    var classes = splitClasses_(body.classes);
+    if (!classes.length) return { ok: false, error: 'need_classes' };
+    if (classes.some(function (c) { return !/^[JS][1-6][A-Z0-9]*$/.test(c); })) return { ok: false, error: 'bad_classes' };
+    sh.getRange(test.row, 3).setValues([[classes.join(', ')]]);
+  }
+  testCfgClear_();
+  var fresh = testRows_(ss).filter(function (x) { return x.code === test.code; })[0];
+  return { ok: true, test: testPublicTest_(fresh, testTeacherNames_(ss)) };
+}
+
+// give one student more (or fewer) attempts than the test's number
+function tExtra_(body) {
+  var T = testTeacher_(body); if (T.error) return { ok: false, error: T.error };
+  var ss = testBook_(), o = testOwned_(ss, T, body.code); if (o.error) return { ok: false, error: o.error };
+  var email = String(body.email || '').trim().toLowerCase(); if (!email) return { ok: false, error: 'no_student' };
+  var delta = clamp_(Math.round(Number(body.delta) || 0), -5, 5);
+  var map = testExtraMap_(ss, o.test.code), cur = map[email] ? map[email].n : 0;
+  var n = clamp_(cur + delta, -o.test.attempts, 10), sh = ss.getSheetByName(SHEET_TEST_EXTRA);
+  if (map[email]) sh.getRange(map[email].row, 3, 1, 3).setValues([[n, new Date(), T.email]]);
+  else sh.appendRow([o.test.code, email, n, new Date(), T.email]);
+  return { ok: true, extra: n, allowed: Math.max(0, o.test.attempts + n) };
+}
+
+// the teacher ends a student's attempt: scored with what was typed so far, over the time used; it counts as used
+function tEnd_(body) {
+  var T = testTeacher_(body); if (T.error) return { ok: false, error: T.error };
+  var ss = testBook_(), o = testOwned_(ss, T, body.code); if (o.error) return { ok: false, error: o.error };
+  var t = testAttempts_(ss), id = String(body.attemptId || ''), r = null, ri = 0;
+  for (var i = 1; i < t.values.length; i++) if (String(t.values[i][2]) === id && String(t.values[i][1]) === o.test.code) { r = t.values[i]; ri = i; break; }
+  if (!r) return { ok: false, error: 'no_attempt' };
+  if (String(r[9]) !== 'started') return { ok: false, error: 'not_running' };
+  var cache = CacheService.getScriptCache(), live = JSON.parse(cache.get('live:' + id) || '{}');
+  var minutesSet = Number(r[11]) || o.test.minutes, secs = Math.round((Date.now() - Number(r[10])) / 1000);
+  var used = Math.max(0.1, Math.min(minutesSet, secs / 60));
+  var keys = Math.max(0, Math.round(live.k || 0)), correct = Math.min(keys, Math.max(0, Math.round(live.c || 0)));
+  var s = testScoreRow_(ss, t, ri, r, testConfig_(), used, secs, correct, keys, Math.round(live.w || 0), 'ended by teacher');
+  cache.put('kick:' + id, '1', 3600);
+  return { ok: true, score: s.score, net: s.net };
+}
+
+// everyone who joined this test, with their attempts and live progress
+function tMonitor_(body) {
+  var T = testTeacher_(body); if (T.error) return { ok: false, error: T.error };
+  var ss = testBook_(), o = testOwned_(ss, T, body.code); if (o.error) return { ok: false, error: o.error };
+  var test = o.test, v = testAttempts_(ss).values, extra = testExtraMap_(ss, test.code), byEmail = {}, order = [], liveKeys = [];
+  for (var i = 1; i < v.length; i++) {
+    var r = v[i]; if (String(r[1]) !== test.code) continue;
+    var email = String(r[3]).toLowerCase();
+    if (!byEmail[email]) { byEmail[email] = { email: email, cls: String(r[4]), seat: String(r[5]), name: String(r[6]), attempts: [] }; order.push(email); }
+    var a = testAttemptOf_(r, i, byEmail[email].attempts.length);
+    byEmail[email].cls = String(r[4]); byEmail[email].seat = String(r[5]); byEmail[email].name = String(r[6]);
+    byEmail[email].attempts.push(a);
+    if (a.status === 'started') liveKeys.push('live:' + a.id);
+  }
+  var live = liveKeys.length ? CacheService.getScriptCache().getAll(liveKeys) : {}, now = Date.now();
+  var students = order.map(function (e) {
+    var s = byEmail[e], b = testBestOf_(s.attempts);
+    s.allowed = testAllowed_(test, extra, e); s.extra = extra[e] ? extra[e].n : 0;
+    s.best = b ? { score: b.score, net: b.net, wpm: b.wpm, acc: b.acc } : null;
+    s.attempts = s.attempts.map(function (a) {
+      var out = { id: a.id, n: a.n, status: a.status, score: a.score, net: a.net, wpm: a.wpm, acc: a.acc, game: a.game };
+      if (a.status === 'started') {
+        var L = live['live:' + a.id] ? JSON.parse(live['live:' + a.id]) : null, secs = (now - a.start) / 1000;
+        out.secsLeft = Math.max(0, Math.round(a.minutes * 60 - secs));
+        out.lost = secs > a.minutes * 60 + 60; // never finished (page closed / crashed)
+        if (L) { out.words = L.w; out.liveWpm = round1_(L.c / 5 / Math.max(0.1, secs / 60)); out.liveAcc = L.k ? round1_(L.c / L.k * 100) : 0; }
+      }
+      return out;
+    });
+    return s;
+  });
+  return { ok: true, test: testPublicTest_(test, testTeacherNames_(ss)), students: students, now: now };
+}

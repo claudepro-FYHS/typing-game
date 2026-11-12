@@ -219,7 +219,7 @@ async function onGoogleCredential(resp) {
     const r = await apiRetry({ action: "login", idToken: resp.credential }, "POST", 30000, 4,
       (n, max) => { msg.className = "muted"; msg.textContent = `The school server is busy — trying again (${n}/${max})…`; });
     if (r.ok) {
-      S.session = { token: r.token, email: r.email, exp: Date.now() + 11.5 * 3600 * 1000, player: null, admin: !!r.admin };
+      S.session = { token: r.token, email: r.email, exp: Date.now() + 11.5 * 3600 * 1000, player: null, admin: !!r.admin, teacher: !!(r.teacher || r.admin) };
       setPlayer(r.player);
       store.sset("mst_session", S.session);
       S.guestMode = false; S.lastMe = Date.now();
@@ -298,7 +298,7 @@ function renderClassNumbers(keep) {
 function renderGradeOptions(g0, n0) {
   const p = (S.session && S.session.player) || {};
   const grades = S.remote.grades.length ? S.remote.grades.map(g => g.grade) : S.remote.classes.slice();
-  if (S.session.admin || p.admin) grades.push("STAFF");
+  if (S.session.admin || S.session.teacher || p.admin) grades.push("STAFF"); // teachers who open typing tests too
   $("#pf-grade").innerHTML = '<option value="">— choose —</option>' + grades.map(g => `<option>${esc(g)}</option>`).join("");
   $("#pf-grade").value = grades.includes(g0) ? g0 : "";
   renderClassNumbers(n0);
@@ -342,7 +342,7 @@ $("#profile-form").addEventListener("submit", async (e) => {
   btn.disabled = true; msg.className = "muted"; msg.textContent = "Saving…";
   try {
     const r = await apiRetry({ action: "saveProfile", token: S.session.token, cls: outsider ? "" : cls, seat: $("#pf-seat").value, name: $("#pf-name").value, nickname: nick });
-    if (r.ok) { S.session.admin = !!r.admin; setPlayer(r.player); giftToast(r); goPlayHome(); }
+    if (r.ok) { S.session.admin = !!r.admin; if ("teacher" in r) S.session.teacher = !!r.teacher; setPlayer(r.player); giftToast(r); goPlayHome(); }
     else if (r.error === "session_expired") { msg.className = "err"; msg.textContent = "Your sign-in expired. Please sign in again."; setTimeout(signOut, 1500); }
     else { msg.className = "err"; msg.textContent = r.message || ("Could not save (" + r.error + ")."); }
   } catch (err) { msg.className = "err"; msg.textContent = "Can't reach the school server. Please try again."; }

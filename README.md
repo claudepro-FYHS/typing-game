@@ -334,25 +334,24 @@ The game has **18 festival events** and switches them on by itself — you don't
 
 The **📝 TYPING TEST** button (under MULTIPLAYER) opens a timed typing test played as a battle: enemies carry the test words, **stop at a distance and wait** until they are typed (nobody gets hurt), there are always 4 on screen, and there is no boss, items, specials or combo rewards, so every student is measured the same way. Anyone can **practise** (1 minute, not saved, ESC stops). A **real test** needs a school sign-in, an open test, and the **test code**: the code is never shown on the page, the teacher tells the class (wrong codes use no attempt; 5 wrong in a row = a 10-minute wait).
 
-**Each game has its own test.** The test tabs live in this game's own spreadsheet (leave `TestSheetId` blank): a test opened in one game is recorded in that game's sheet only. After pasting the new Code.gs, run `setup` once (or let the first student who opens the test create them). It adds three tabs:
+**Teachers open tests on the website.** Add the teacher's school email (and name) to the `TestTeachers` tab. The teacher signs in (class STAFF) → 📝 TYPING TEST → **👩‍🏫 TEACHER CONSOLE**: classes (e.g. `J203, J207` or `J2`), minutes, attempts, word bank and a code (one is suggested) → OPEN TEST. While it runs the page updates every 5 s: who joined, words typed, speed, best score. The teacher can end a student's attempt (scored with what was typed so far; it counts as used), give one student or everyone more or fewer attempts, change the classes or minutes, close / reopen the test, and download the marks as an Excel (CSV) file. Teachers see only their own tests; people in `Admins` see all. Each game keeps its own tests (`TestSheetId` blank).
 
 | Tab | What it is |
 |---|---|
-| `TestSettings` | `TestCode` (blank = no test; a new code = a new test, everybody gets new attempts), `TestMinutes` (5), `TestAttempts` (2, the best counts), `TestWordBank` (everyday), `TestFullWPM` (Net WPM for full marks per form, never below 40), `TestPassAccuracy` (85), `TestClasses` (blank = everyone, or e.g. `J2, S1S2`) |
-| `TestAttempts` | One row per attempt: class, seat, name, game, status (started / finished / left page), WPM, accuracy, Net WPM, score |
-| `TestResults` | One row per student and test: attempts used and the **best score** — copy this into the mark book |
+| `TestSettings` | Defaults for new tests (`TestMinutes` 5, `TestAttempts` 2, `TestWordBank` everyday) and scoring (`TestFullWPM`, `TestPassAccuracy` 85); column E is a note for the admin |
+| `TestTeachers` | Teachers who may open tests: email (A), name (B) |
+| `Tests` | Every test a teacher opened: code, teacher, classes, minutes, attempts, word bank, open / closed (written by the website) |
+| `TestExtra` | Extra (or fewer) attempts a teacher gave one student |
+| `TestAttempts` | One row per attempt: class, seat, name, status (started / finished / left page / ended by teacher), WPM, accuracy, Net WPM, score |
+| `TestResults` | One row per student and test: attempts used, **best score** |
 
-(Optional) To make both games share one test and one set of results, put the same spreadsheet ID in the `TestSheetId` row of both games' Settings tab.
-
-How the test works: type the word on an enemy to destroy it (no SPACE needed: each finished word counts one extra key, like a space). A wrong key is a mistake. Everyone gets the same words in the same order for one test code.
-
-- **Several codes at once:** `TestCode` can hold one code per class group: `J2-K7 = J203, J207; S1-M3 = S1S2` (split by `;` or new lines; `CODE =` with nothing after it = everyone; a part without `=` uses `TestClasses`). A student can only use the code of their own class; attempts and results are kept per code. The TestSettings tab has a how-to note in column E.
+How the test works: type the word on an enemy to destroy it (no SPACE needed: each finished word counts one extra key, like a space). A wrong key is a mistake. Everyone gets the same words in the same order for one test code. Students must type the code the teacher announces (never shown on the page; only the chosen classes can use it; a wrong code uses no attempt; 5 wrong in a row = a 10-minute wait).
 
 How it is scored:
 - WPM = correct keys (letters of finished words + one per word, like a space) ÷ 5 ÷ minutes. Accuracy = correct keys ÷ all keys. **Net WPM = WPM × accuracy.**
 - Score: Net 10 WPM = 40 points, rising in a straight line to **100 at the full-marks speed** of the student's form (default J1–J2 40, J3 and senior 45). Below 10 Net WPM: 4 points per WPM.
 - Accuracy under `TestPassAccuracy` (85 %) halves that attempt.
-- Switching to another tab or window ends the attempt (scored over the full time). Closing or reloading the page uses up the attempt. If a student had a real problem, delete that row in `TestAttempts` to give the attempt back.
+- Switching to another tab or window ends the attempt (scored over the full time). Closing or reloading the page uses up the attempt. If a student had a real problem (crash, power cut), the teacher gives one more attempt in the console.
 - Pasted or auto-completed text is ignored. More than 220 WPM is rejected.
 
 ## Classes, the new school year, and players from outside the school

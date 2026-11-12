@@ -33,6 +33,7 @@ http.createServer((req, res) => {
     ctx.setupTest_(); sheets.TestSettings.data.find(r => r[0] === u.searchParams.get('k'))[1] = u.searchParams.get('v');
     ctx.CacheService.getScriptCache().remove('testcfg'); ctx.CacheService.getScriptCache().remove('config'); res.end('ok'); return;
   }
+  if (u.pathname === '/__testteacher') { ctx.setupTest_(); sheets.TestTeachers.data.push([u.searchParams.get('email'), u.searchParams.get('name') || '', '']); res.end('ok'); return; }
   if (u.pathname === '/__testdata') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ attempts: (sheets.TestAttempts || {}).data, results: (sheets.TestResults || {}).data })); return; }
   if (u.pathname === '/__fail') { global.failSubmit = u.searchParams.get('on') === '1'; res.end('ok'); return; }
   let p = u.pathname.startsWith('/__t/') ? path.join(__dirname, u.pathname.slice(5)) : path.join(ROOT, u.pathname === '/' ? 'index.html' : u.pathname);
