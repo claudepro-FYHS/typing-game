@@ -13,6 +13,7 @@ function makeEnv(opts = {}) {
         return {
           setValues(vals) { for (let i = 0; i < nr; i++) { while (data.length < r + i) data.push([]); for (let j = 0; j < nc; j++) data[r - 1 + i][c - 1 + j] = vals[i][j]; } return this; },
           setFontWeight() { return this; },
+          getValue() { return (data[r - 1] || [])[c - 1] == null ? '' : data[r - 1][c - 1]; },
         };
       },
       appendRow(row) { data.push(row.slice()); },

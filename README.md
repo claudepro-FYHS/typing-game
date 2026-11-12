@@ -346,6 +346,8 @@ The **📝 TYPING TEST** button (under MULTIPLAYER) opens a timed typing test pl
 
 How the test works: type the word on an enemy to destroy it (no SPACE needed: each finished word counts one extra key, like a space). A wrong key is a mistake. Everyone gets the same words in the same order for one test code.
 
+- **Several codes at once:** `TestCode` can hold one code per class group: `J2-K7 = J203, J207; S1-M3 = S1S2` (split by `;` or new lines; `CODE =` with nothing after it = everyone; a part without `=` uses `TestClasses`). A student can only use the code of their own class; attempts and results are kept per code. The TestSettings tab has a how-to note in column E.
+
 How it is scored:
 - WPM = correct keys (letters of finished words + one per word, like a space) ÷ 5 ÷ minutes. Accuracy = correct keys ÷ all keys. **Net WPM = WPM × accuracy.**
 - Score: Net 10 WPM = 40 points, rising in a straight line to **100 at the full-marks speed** of the student's form (default J1–J2 40, J3 and senior 45). Below 10 Net WPM: 4 points per WPM.

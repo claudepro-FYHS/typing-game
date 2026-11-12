@@ -45,7 +45,7 @@ const s2 = login(A, 'stu2@foonyew.edu.my', 'J304', '8', 'Lee Mei', 'Mei');
 const s3 = login(A, 'stu3@foonyew.edu.my');                                   // no profile yet
 
 // no test running
-let r = A.post({ action: 'testInfo', token: s1 }); assert(r.ok && r.active === false && r.allowed === true, JSON.stringify(r));
+let r = A.post({ action: 'testInfo', token: s1 }); assert(r.ok && r.active === false && r.allowed === false, JSON.stringify(r));
 assert.equal(cfgOf(A).test, false);
 r = A.post({ action: 'testStart', token: s1, code: '' }); assert.equal(r.error, 'no_test');
 
@@ -113,6 +113,23 @@ r = A.post({ action: 'testStart', token: s2, code: 'J2-T3' }); assert.equal(r.er
 r = A.post({ action: 'testStart', token: s1, code: 'J2-T3' }); assert(r.ok && r.attemptNo === 1, 'new test code = new attempts');
 // an attempt that was never finished still counts as used
 r = A.post({ action: 'testInfo', token: s1 }); assert(r.used === 1 && r.best === null && r.history[0].status === 'started', JSON.stringify(r));
+
+// several codes at once: each class group has its own code (TestClasses is not used then)
+setTest('TestCode', 'J2-K7 = J210, J207; S3-M3 = J3');
+r = A.post({ action: 'testInfo', token: s1 }); assert(r.active && r.allowed && r.used === 0 && r.code === undefined, 'J210 has its own test: ' + JSON.stringify(r));
+r = A.post({ action: 'testInfo', token: s2 }); assert(r.active && r.allowed, 'J3 student allowed by the second group (TestClasses ignored)');
+r = A.post({ action: 'testStart', token: s1, code: 'S3-M3' }); assert.equal(r.error, 'not_your_class', "another group's code is refused");
+r = A.post({ action: 'testStart', token: s2, code: 'J2-K7' }); assert.equal(r.error, 'not_your_class');
+r = A.post({ action: 'testStart', token: s1, code: 'j2k7' }); assert(r.ok && r.code === 'J2-K7' && r.attemptNo === 1, JSON.stringify(r));
+r = A.post({ action: 'testStart', token: s2, code: 'S3-M3' }); assert(r.ok && r.code === 'S3-M3' && r.attemptNo === 1, JSON.stringify(r));
+assert(att().some(x => x[1] === 'J2-K7' && x[3] === 'stu1@foonyew.edu.my') && att().some(x => x[1] === 'S3-M3'), 'attempts are recorded under each group code');
+r = A.post({ action: 'testInfo', token: s1 }); assert(r.used === 1, 'testInfo counts the attempts of the student own code');
+// a new-line separated list and a group without classes (= everyone) also work
+setTest('TestCode', 'A1-X\nB2-Y =');
+r = A.post({ action: 'testStart', token: s2, code: 'B2-Y' }); assert(r.ok && r.code === 'B2-Y', 'a group without classes is for everyone: ' + JSON.stringify(r));
+r = A.post({ action: 'testStart', token: s2, code: 'A1-X' }); assert.equal(r.error, 'not_your_class', 'a line without "=" is a code for the TestClasses classes (J2, S1S2), not for J3');
+r = A.post({ action: 'testStart', token: s1, code: 'A1-X' }); assert(r.ok && r.code === 'A1-X', 'the J210 student (in TestClasses) can use it: ' + JSON.stringify(r));
+console.log('several codes: per-group codes, other groups refused, attempts recorded per code');
 
 // a broken TestSheetId never breaks the game config
 const C = makeEnv(); C.ctx.setup(); C.sheets.Settings.data.find(x => x[0] === 'TestSheetId')[1] = 'X';

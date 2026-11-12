@@ -160,7 +160,7 @@ function confirmStart() {
     if (!r || !r.ok) {
       const why = { wrong_code: "That is not the right test code. Check with your teacher.", too_many_codes: "Too many wrong codes. Wait a few minutes and ask your teacher.",
         no_attempts: "You have used all your attempts.", no_test: "The test is closed.",
-        not_your_class: "This test is not for your class.", session_expired: "Your sign-in has expired. Sign in again.", busy: "The server is busy. Try again." }[r && r.error];
+        not_your_class: "That code is for another class. Check the code for your class.", session_expired: "Your sign-in has expired. Sign in again.", busy: "The server is busy. Try again." }[r && r.error];
       toast(why || "Could not start the test. Try again.", 5000);
       return openExam();
     }
