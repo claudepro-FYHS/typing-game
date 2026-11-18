@@ -75,6 +75,7 @@ if (multiBtn) $("#btn-exam").onclick = () => openExam();
 /* ---------- the word list: same seed = same words in the same order ---------- */
 function bankWords(bankId) {
   const b = WORD_BANKS[bankId] || WORD_BANKS.everyday;
+  if (b.lines) return [...new Set(b.words)].sort(); // 常用句子: whole lines, typed exactly
   const list = Array.isArray(b.words) ? b.words : String(b.words).split(/\s+/);
   return [...new Set(list.map(w => String(w).trim().toLowerCase()).filter(w => /^[a-z]+$/.test(w)))].sort();
 }
@@ -153,6 +154,7 @@ function renderMenu() {
       <ul class="exam-rules">
         <li>It is a battle with your own mech, but nobody gets hurt: the enemies <b>stop and wait</b> until you type their word. Type as fast and as accurately as you can until the time is up.</li>
         <li>Everybody gets the same words in the same order. No boss, items or specials in a test.</li>
+        <li>Some tests use <b>sentences or code lines</b>: type them exactly, with capitals, spaces and symbols. A capital or symbol needs Shift, so it counts as 2 key presses.</li>
         <li>A wrong key counts as a mistake. Net WPM = typing speed × accuracy. Full marks at <b>${full}</b> Net WPM${full > 40 ? "" : " or more"}; 10 Net WPM = 40 points.</li>
         <li>Accuracy under ${passAcc}% halves the score of that attempt.</li>
         <li>Stay on this page: if you switch away, the clock keeps running. Closing or reloading the page ends the attempt.</li>
@@ -160,11 +162,12 @@ function renderMenu() {
     </div>
     <div class="row" style="justify-content:flex-end;flex-wrap:wrap;gap:8px">
       <button class="btn ghost" id="exam-back" style="flex:0 0 auto">◀ BACK</button>
+      <select id="exam-pbank" title="What to practise" style="flex:0 0 auto;max-width:230px">${bankOptions(Object.entries(WORD_BANKS).filter(([k, b]) => k === "everyday" || b.lines), EX.pbank || "everyday")}</select>
       <button class="btn" id="exam-practice" style="flex:0 0 auto">PRACTICE (${PRACTICE_MIN} MIN)</button>
     </div>`;
   $("#exam-back").onclick = () => goPlayHome();
   if (I.teacher) $("#exam-teach").onclick = () => openTeach();
-  $("#exam-practice").onclick = () => { focusGameTyper(); begin({ real: false, minutes: PRACTICE_MIN, words: seededWords("practice" + Date.now(), "everyday", 400), full, passAcc }); };
+  $("#exam-practice").onclick = () => { focusGameTyper(); const pb = EX.pbank = $("#exam-pbank").value; begin({ real: false, minutes: PRACTICE_MIN, bank: pb, words: seededWords("practice" + Date.now(), pb, 400), full: pbFull(pb, full), passAcc }); };
   if (canStart) {
     $("#exam-start").onclick = confirmStart;
     $("#exam-code").addEventListener("keydown", e => { if (e.key === "Enter") confirmStart(); });
@@ -173,6 +176,8 @@ function renderMenu() {
   if (isSchool() && I.active && I.allowed && !canStart && !EX.loading)
     EX.menuTimer = setTimeout(() => { if (S.currentScreen === "scr-exam" && !EX.run && !EX.starting && card.querySelector("#exam-practice")) openExam(true); }, 10000);
 }
+// practice estimate: sentences and code lines have their own full-marks speed (TestFullWPMLine / TestFullWPMCode)
+function pbFull(bank, full) { const I = EX.info || {}; return /^code_/.test(bank) ? I.fullCode || 30 : /^line_/.test(bank) ? I.fullLine || 35 : I.fullWord || full; }
 function focusGameTyper() { const t = $("#typer"); if (t) t.focus({ preventScroll: true }); } // inside a click, so phone keyboards open
 
 function confirmStart() {
@@ -209,7 +214,7 @@ function confirmStart() {
       return openExam();
     }
     begin({ real: true, attemptId: r.attemptId, attemptNo: r.attemptNo, attempts: r.attempts, minutes: r.minutes,
-      words: seededWords(r.code, r.bank, Math.max(600, r.minutes * 160)), full: r.full, passAcc: r.passAcc, code: r.code });
+      bank: r.bank, words: seededWords(r.code, r.bank, Math.max(600, r.minutes * 160)), full: r.full, passAcc: r.passAcc, code: r.code });
   };
 }
 
@@ -222,7 +227,7 @@ function begin(o) {
   if (R.real) ping(R);
   const label = o.real ? `TEST · ATTEMPT ${o.attemptNo}/${o.attempts}` : "PRACTICE";
   GAME_EXAM.startExamGame({
-    words: o.words,
+    words: o.words, bank: o.bank,
     title: o.real ? `TYPING TEST · ATTEMPT ${o.attemptNo}/${o.attempts}` : "PRACTICE",
     hud: () => `${label} · ⏱ ${clock(timeLeft(R))}${o.real ? "" : " · ESC = stop"}`,
     onStart: () => { if (EX.run !== R || R.over) return; R.started = true; R.t0 = performance.now(); loop(); },
@@ -296,7 +301,7 @@ function showResult(r) {
       <div class="stat"><div class="exam-big">${r.unsaved ? "…" : r.score}</div><div class="muted small">${r.practice ? "Score if this were the test" : "Score / 100"}</div></div>
       <div class="stat"><b>${r.wpm}</b><div class="muted small">WPM</div></div>
       <div class="stat"><b>${r.accuracy}%</b><div class="muted small">Accuracy</div></div>
-      <div class="stat"><b>${R.words_done}</b><div class="muted small">Words</div></div>
+      <div class="stat"><b>${R.words_done}</b><div class="muted small">${(WORD_BANKS[R.bank] || {}).lines ? "Lines" : "Words"}</div></div>
       <div class="stat"><b>${R.errors}</b><div class="muted small">Mistakes</div></div>
     </div>
     ${!r.practice && !r.unsaved ? `<p>Attempt ${r.attemptNo} of ${r.attempts}. Your best score: <b>${r.best}</b> / 100 (the best attempt counts).</p>` : ""}
@@ -362,11 +367,12 @@ function renderTeachList() {
         <label>Classes 班级 <input id="tc-classes" placeholder="J203, J207  or  J2"></label>
         <label>Minutes 时间 <input id="tc-min" type="number" min="1" max="15" value="${d.minutes}"></label>
         <label>Attempts 次数 <input id="tc-att" type="number" min="1" max="10" value="${d.attempts}"></label>
-        <label>Word bank 词库 <select id="tc-bank">${banks.map(k => `<option value="${esc(k)}" ${k === d.bank ? "selected" : ""}>${esc(WORD_BANKS[k].name || k)}</option>`).join("")}</select></label>
+        <label>Word bank 词库 / 句子 <select id="tc-bank">${bankOptions(banks.map(k => [k, WORD_BANKS[k]]), d.bank)}</select></label>
         <label>Test code 代号 <span style="display:flex;gap:6px"><input id="tc-code" value="${esc(I.suggest)}" style="flex:1;min-width:0;width:100%;text-transform:uppercase;font-family:monospace"><button class="btn ghost" id="tc-dice" title="New random code" style="flex:0 0 auto">🎲</button></span></label>
         <button class="btn primary" id="tc-create">OPEN TEST ▶</button>
       </div>
-      <p class="muted small" style="margin:8px 0 0">Students sign in, press 📝 TYPING TEST and type this code. Only the classes you choose can use it.</p>
+      <p class="muted small" style="margin:8px 0 0">Students sign in, press 📝 TYPING TEST and type this code. Only the classes you choose can use it.<br>
+        Sentences 常用句子: students type whole sentences with capitals and symbols (S2: C code lines 程式码). They have their own full-marks speed, set in the sheet's TestSettings.</p>
     </div>
     <div class="exam-box"><b>${I.admin ? "All tests (admin)" : "My tests 我的测验"}</b>
       ${I.tests.length ? `<div class="tc-wrap"><table class="tc-table"><tr><th>Code</th><th>Classes</th>${I.admin ? "<th>Teacher</th>" : ""}<th>Status</th><th>Settings</th><th>Opened</th><th></th></tr>${rows}</table></div>` : `<p class="muted">No tests yet.</p>`}

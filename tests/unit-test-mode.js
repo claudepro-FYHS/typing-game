@@ -28,6 +28,31 @@ assert.equal(A.ctx.testFullWpm_('J105', cfg), 40, 'below 40 is raised to 40');
 assert.equal(A.ctx.testFullWpm_('J304', cfg), 45); assert.equal(A.ctx.testFullWpm_('S2S5', cfg), 55, 'longest prefix wins');
 setTest('TestFullWPM', 'J1:40, J2:40, J3:45, S1:45, S2:45, S3:45');
 
+// sentences (line_…) and code lines (code_…) have their own full-marks speed
+assert(sh.TestSettings.data.some(r => r[0] === 'TestFullWPMLine') && sh.TestSettings.data.some(r => r[0] === 'TestFullWPMCode'), 'setup adds TestFullWPMLine + TestFullWPMCode');
+cfg = A.ctx.testConfig_();
+assert.equal(A.ctx.testKind_('everyday'), 'word'); assert.equal(A.ctx.testKind_('line_j2'), 'line'); assert.equal(A.ctx.testKind_('code_s2'), 'code');
+assert.equal(A.ctx.testFullWpm_('J205', cfg, 'line_j2'), 35); assert.equal(A.ctx.testFullWpm_('J304', cfg, 'line_everyday'), 40);
+assert.equal(A.ctx.testFullWpm_('S2S3', cfg, 'code_s2'), 30); assert.equal(A.ctx.testFullWpm_('J304', cfg, 'everyday'), 45);
+setTest('TestFullWPMLine', ''); cfg = A.ctx.testConfig_();
+assert.equal(A.ctx.testFullWpm_('J304', cfg, 'line_everyday'), 35, 'blank setting -> 35 for sentences');
+setTest('TestFullWPMLine', 'J1:35, J2:35, J3:40, S1:40, S2:40, S3:40');
+console.log('full marks: words 40/45, sentences 35/40, code lines 30');
+
+// sentences.js (shared by both games): plain keyboard characters, at most 46 per line, one space between words
+{
+  const win = {}; require('vm').runInNewContext(require('fs').readFileSync(__dirname + '/../sentences.js', 'utf8'), { window: win, String });
+  const banks = Object.entries(win.SENTENCE_BANKS);
+  assert(banks.length >= 5, 'sentence banks');
+  for (const [k, b] of banks) {
+    assert(/^(line|code)_/.test(k), 'bank ids start with line_ or code_: ' + k);
+    const lines = String(b.lines).split('\n').map(s => s.trim()).filter(Boolean);
+    assert(lines.length >= 25, k + ' has at least 25 lines');
+    for (const l of lines) assert(/^[\x20-\x7e]{1,46}$/.test(l) && !/  /.test(l), k + ': bad line ' + JSON.stringify(l));
+  }
+  console.log('sentences.js:', banks.map(([k, b]) => k + ' ' + String(b.lines).split('\n').filter(s => s.trim()).length).join(', '));
+}
+
 // people
 const login = (email, cls, seat, name, nick) => {
   const t = A.post({ action: 'login', idToken: 'fake:' + email }).token;
@@ -156,6 +181,16 @@ assert(st.used === 1 && st.attempts.length === 2 && st.attempts[0].status === 'n
 rowOf(idLost)[10] -= 300 * 1000;
 r = A.post({ action: 'testFinish', token: s5, attemptId: idLost, correct: 500, keys: 500, words: 90 }); assert(r.ok && !r.already && r.score > 0, 'late finish still scored: ' + JSON.stringify(r));
 console.log('START retries give the same attempt; never-started attempts do not count; late finish still scored');
+
+// a sentence test for S2 code lines: the student's start gets the code-line full-marks speed
+{
+  const sc = login('stu9@foonyew.edu.my', 'S2S1', '4', 'Chan', 'Chan');
+  const rc = A.post({ action: 'tCreate', token: tl, classes: 'S2S1', code: 'CODE-C', bank: 'code_s2' }); assert(rc.ok && rc.test.bank === 'code_s2', JSON.stringify(rc));
+  const ri = A.post({ action: 'testInfo', token: sc }); assert(ri.ok && ri.full === 30 && ri.kind === 'code', 'testInfo: code test full 30 ' + JSON.stringify(ri));
+  const rs = A.post({ action: 'testStart', token: sc, code: 'code-c' }); assert(rs.ok && rs.full === 30 && rs.bank === 'code_s2', JSON.stringify(rs));
+  A.post({ action: 'tUpdate', token: tl, code: 'CODE-C', status: 'closed' });
+  console.log('code-line test: full marks 30 for S2');
+}
 
 // config: is any test open?
 A.ctx.CacheService.getScriptCache().remove('config');

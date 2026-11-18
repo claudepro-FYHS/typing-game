@@ -9,6 +9,11 @@ for (const [k, b] of Object.entries(window.WORD_BANKS || {})) {
   const words = [...new Set(String(b.words).toLowerCase().split(/\s+/).filter(w => /^[a-z]+$/.test(w)))];
   if (words.length >= 20) WORD_BANKS[k] = { name: b.name, words };
 }
+// 常用句子 sentence / code-line banks (sentences.js): typed exactly, with capitals, spaces and symbols
+for (const [k, b] of Object.entries(window.SENTENCE_BANKS || {})) {
+  const lines = [...new Set(String(b.lines).split("\n").map(s => s.trim()).filter(s => s && /^[\x20-\x7e]+$/.test(s)))];
+  if (lines.length >= 10) WORD_BANKS[k] = { name: b.name, words: lines, lines: true };
+}
 const MECHS = MODELS.MECHS;
 const MECH_BY_ID = Object.fromEntries(MECHS.map(m => [m.id, m]));
 const PCOLORS = ["#3ad0ff", "#ffcc33", "#ff5e7a", "#7dff8a"];
@@ -380,9 +385,23 @@ function renderToggles() {
 function renderBankSelect() {
   const bs = $("#bank-select");
   const entries = Object.entries(WORD_BANKS).sort((a, b) => (b[1].event ? 1 : 0) - (a[1].event ? 1 : 0));
-  bs.innerHTML = entries.map(([k, b]) => `<option value="${k}">${esc(b.name)} (${b.words.length})</option>`).join("");
+  bs.innerHTML = bankOptions(entries);
   if (!WORD_BANKS[S.prefs.bank]) S.prefs.bank = "everyday";
   bs.value = S.prefs.bank;
+  bankNote();
+}
+// word banks first, then the sentence banks (常用句子) in their own group
+function bankOptions(entries, selected) {
+  const opt = ([k, b]) => `<option value="${esc(k)}" ${k === selected ? "selected" : ""}>${esc(b.name || k)} (${b.words.length}${b.lines ? " lines" : ""})</option>`;
+  return `<optgroup label="Words 单字">${entries.filter(e => !e[1].lines).map(opt).join("")}</optgroup>` +
+    `<optgroup label="Sentences 常用句子">${entries.filter(e => e[1].lines).map(opt).join("")}</optgroup>`;
+}
+function bankNote() {
+  const bs = $("#bank-select"); if (!bs) return;
+  let n = $("#bank-note");
+  if (!n) { n = document.createElement("div"); n.id = "bank-note"; n.className = "muted small"; n.style.marginTop = "4px"; bs.insertAdjacentElement("afterend", n); }
+  const b = WORD_BANKS[bs.value];
+  n.textContent = b && b.lines ? "Type each line exactly: capitals, spaces and symbols count. Items and special keys work when no line is locked." : "";
 }
 function renderEventBanners() {
   const ev = activeEvent();
@@ -526,7 +545,7 @@ async function buyMech(id, btn) {
   }
 }
 $$("#diff-seg button").forEach(b => b.onclick = () => { S.prefs.diff = b.dataset.d; savePrefs(); $$("#diff-seg button").forEach(x => x.classList.toggle("active", x === b)); });
-$("#bank-select").onchange = (e) => { S.prefs.bank = e.target.value; savePrefs(); };
+$("#bank-select").onchange = (e) => { S.prefs.bank = e.target.value; savePrefs(); bankNote(); };
 $("#btn-edit-profile").onclick = () => showProfile();
 $("#btn-quality").onclick = () => {
   S.prefs.quality = S.prefs.quality === "high" ? "low" : "high"; savePrefs(); applyQuality();

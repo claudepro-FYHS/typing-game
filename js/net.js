@@ -111,6 +111,7 @@ function hostOnData(conn, d) {
     case "item": doItem(pid, d.k); break;
     case "combo": grantComboItem(pid, d.n); break;
     case "special": doSpecial(pid); break;
+    case "rescue": resolveRescue(d.id, pid); break;
     case "stats": { const p = player(pid); if (p) { p.wpm = Number(d.wpm) || 0; p.acc = Number(d.acc) || 0; } break; }
   }
 }
@@ -122,6 +123,7 @@ function hostOnClose(conn) {
     const p = player(conn.pid);
     if (p) {
       p.left = true; p.alive = false; emitPState(p);
+      checkRescues(); // their rescue word goes away, and they no longer need to type anyone else's
       floater(window.innerWidth / 2, 130, `${p.nick} left the match`, p.color);
       if (!G.players.some(q => q.alive)) gameOver("destroyed");
     }

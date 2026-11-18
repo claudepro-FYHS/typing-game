@@ -42,7 +42,7 @@ function player(pid) { return G.players.find(p => p.pid === pid); }
 function isAuthority() { return G.role !== "client"; }
 function nPlayers() { return G.players.length; }
 function stageFactor() { return Math.max(0.5, Math.pow(0.92, G.stage - 1)); }
-function killsGoal() { return Math.round((G.diff.kills + 2 * G.stage) * (1 + 0.5 * (nPlayers() - 1))); }
+function killsGoal() { const g = Math.round((G.diff.kills + 2 * G.stage) * (1 + 0.5 * (nPlayers() - 1))); return G.lines ? Math.max(3, Math.round(g * 0.4)) : g; }
 function speedFactor(t) { const v = player(t.victim); if (!v) return 1; return v.freezeT > 0 ? 0 : v.slowT > 0 ? 0.5 : 1; }
 
 /* ---------- setup ---------- */
@@ -87,8 +87,9 @@ function startGame(opts) {
     combo: 0, maxCombo: 0, charge: 0, correct: 0, keystrokes: 0, mistakes: {}, time: 0, activeTime: 0,
     paused: false, over: false, myKills: 0, myBosses: 0, coins: 0, shake: 0, perfT: 0, perfN: 0, perfChecked: false,
     snapT: 0, statsT: 0, bossOrder: null, level: Number(opts.level) || 1, event: opts.event || "", eventMult: opts.event && EVENTS[opts.event] ? EVENTS[opts.event].bonus : 1,
-    revenge: opts.mode === "solo" && !opts.exam ? revengeList() : {}, revengeKills: 0, comboTier: 0, slowmo: 0, awakened: false, awakeMiss: 0,
+    revenge: opts.mode === "solo" && !opts.exam && !(WORD_BANKS[opts.bank] || {}).lines ? revengeList() : {}, revengeKills: 0, comboTier: 0, slowmo: 0, awakened: false, awakeMiss: 0,
     exam: opts.exam || null, examWords: 0, examLetters: 0,
+    lines: !!(WORD_BANKS[opts.bank] && WORD_BANKS[opts.bank].lines), // 常用句子: enemies carry whole sentences / code lines
   });
   document.body.classList.toggle("exam-game", !!G.exam);
   G.players = opts.players.map((pi, i) => makePlayer(pi, i, n));
@@ -128,6 +129,9 @@ function applyEvent(ev) {
     case "prog": onProg(ev); break;
     case "snap": onSnap(ev); break;
     case "over": onOver(ev); break;
+    case "rdone": onRDone(ev); break;
+    case "rgone": removeTarget(G.byId[ev.id]); break;
+    case "revive": onRevive(ev); break;
   }
 }
 
@@ -149,6 +153,10 @@ function createTarget(ev) {
     G.boss = { id: ev.id, hp: ev.hp, maxHp: ev.hp, enter: 0, atkT: ev.atk || 5, attack: 0, name: t.mesh.userData.def.name, kind: t.mesh.userData.def.kind, target: t };
     $("#bossbar").classList.add("show");
     $("#boss-name").textContent = `STAGE ${G.stage} BOSS — ${G.boss.name} (${G.boss.kind})`;
+  } else if (ev.kind === "rescue") {
+    const v = player(ev.victim);
+    t.done = {}; t.mesh = rescueBeacon();
+    t.mesh.position.set(v ? v.x : 0, 0, 0);
   } else {
     t.mesh = ev.kind === "missile" ? buildMissile() : MODELS.buildEnemy(ev.type);
     if (ev.elite) {
@@ -275,8 +283,8 @@ function killPlayer(v) {
   v.alive = false;
   if (v.left) { v.mesh.visible = false; v.shieldMesh.visible = false; return; }
   explode(v.mesh.position.clone().add(new V3(0, 2, 0)), 0xff6633, 120, 0.6, 12);
-  setTimeout(() => { v.mesh.visible = false; v.shieldMesh.visible = false; }, 250);
-  if (v.pid === G.myPid) { releaseLock(); if (G.mode === "multi") showMsg("MECH DESTROYED", "Spectating — your teammates fight on!", true); }
+  setTimeout(() => { if (!v.alive) { v.mesh.visible = false; v.shieldMesh.visible = false; } }, 250);
+  if (v.pid === G.myPid) { releaseLock(); if (G.mode === "multi") showMsg("MECH DOWN", G.players.some(p => p.alive) ? "Hang on! You come back when every teammate types the 🆘 word" : "", true); }
 }
 
 function onPState(ev) {
@@ -284,6 +292,7 @@ function onPState(ev) {
   for (const k of ["hp", "maxHp", "shield", "freezeT", "slowT", "score", "kills", "left"]) if (k in ev) p[k] = ev[k];
   if (ev.items) p.items = ev.items;
   if ("alive" in ev && !ev.alive && p.mesh.visible) killPlayer(p);
+  if (ev.alive && !p.alive && !p.left) { p.alive = true; p.mesh.visible = true; }
   updateHud();
 }
 
@@ -313,7 +322,7 @@ function onProg(ev) {
   if (!t || !p) return;
   if (ev.n > 0) t.others[ev.pid] = ev.n; else delete t.others[ev.pid];
   renderTag(t);
-  if (ev.n > 0) { MODELS.aimMech(p.mesh, p.anim, targetPoint(t)); MODELS.fireMech(p.anim, false); p.aimAt = t; p.aimT = 1.2; beam(muzzlePos(p), targetPoint(t), 0x6fe8ff, 0.04, 0.07); }
+  if (ev.n > 0 && t.kind !== "rescue") { MODELS.aimMech(p.mesh, p.anim, targetPoint(t)); MODELS.fireMech(p.anim, false); p.aimAt = t; p.aimT = 1.2; beam(muzzlePos(p), targetPoint(t), 0x6fe8ff, 0.04, 0.07); }
 }
 
 function onSnap(ev) {
@@ -365,14 +374,14 @@ function spawnEnemy(forceWord, forceType) {
     if (!G.targets.some(t => t.kind === "enemy" && t.progress < 0.3 && Math.abs(t.start.x - x) < range * 0.25)) break;
   }
   const y = 2 + Math.random() * (camera.aspect < 0.8 ? 18 : 6);
-  const travel = d.travel * stageFactor() * (size === "long" ? 1.3 : size === "short" ? 0.85 : 1) * (0.9 + Math.random() * 0.2);
+  const travel = d.travel * stageFactor() * (size === "long" ? 1.3 : size === "short" ? 0.85 : 1) * (0.9 + Math.random() * 0.2) * (G.lines ? 0.6 + word.length / 9 : 1); // a sentence needs more time
   emit({ e: "spawn", id: G.nextId++, kind: "enemy", type, word, elite, victim: v.pid, travel, wob: Math.random() * 6,
     s: [x, y, -95], en: [v.x + (x - v.x) * 0.1, 2.2, 1.5] });
 }
 
 function spawnBoss() {
   const n = nPlayers();
-  const hp = Math.round((G.diff.bossHp + 2 * (G.stage - 1)) * (1 + 0.5 * (n - 1)));
+  const hp0 = Math.round((G.diff.bossHp + 2 * (G.stage - 1)) * (1 + 0.5 * (n - 1))), hp = G.lines ? Math.ceil(hp0 / 2) : hp0; // every boss hit is a whole sentence
   if (!G.bossOrder) {
     // bosses unlocked by pilot level (host's level in multiplayer), shuffled
     const normal = MODELS.BOSSES.map((b, i) => b.event ? -1 : i).filter(i => i >= 0).slice(0, bossPoolSize(G.level));
@@ -395,13 +404,13 @@ function spawnMissile() {
 
 function resolveKill(id, pid, combo, how) {
   const t = G.byId[id], p = player(pid);
-  if (!t || !t.alive || t.kind === "boss" || !p) return false;
+  if (!t || !t.alive || t.kind === "boss" || t.kind === "rescue" || !p) return false;
   const comboMult = Math.min(2, 1 + (combo || 0) * 0.05);
   const eliteMult = t.elite ? 2 : 1;
   const pts = Math.round(t.word.length * 10 * (how === "type" ? comboMult : 0.5) * G.diff.mult * eliteMult);
   let coins = 0, drop = null;
   if (t.kind === "enemy") {
-    coins = Math.max(1, Math.round(Math.ceil(t.word.length / 2) * G.diff.mult * (p.mech.coinMult || 1) * G.eventMult * eliteMult));
+    coins = Math.max(1, Math.round(Math.ceil(t.word.length / (G.lines ? 3 : 2)) * G.diff.mult * (p.mech.coinMult || 1) * G.eventMult * eliteMult));
     if (how !== "bomb" && !G.exam && Math.random() < 0.08 * (p.mech.dropMult || 1)) {
       const kinds = ["bomb", "freeze", "shield"].filter(k => p.items[k] < 3);
       if (kinds.length) { drop = kinds[Math.floor(Math.random() * kinds.length)]; p.items[drop]++; }
@@ -439,7 +448,64 @@ function hitPlayer(t) {
   v.hp -= 1;
   if (v.hp <= 0) v.alive = false;
   emit({ e: "hit", id: t.id, victim: v.pid, hp: v.hp, shield: false });
-  if (!G.players.some(p => p.alive)) gameOver("destroyed");
+  if (!G.players.some(p => p.alive)) return gameOver("destroyed");
+  if (!v.alive) { spawnRescue(v); checkRescues(); }
+}
+
+/* ---------- RESCUE (multiplayer): a teammate who goes down gets a 🆘 word over their head.
+   Every teammate still standing must type it once; then they come back with half their hearts
+   and a shield. Only when everybody is down is the match over. ---------- */
+const RESCUE_PTS = 100;
+function rescuers() { return G.players.filter(p => p.alive && !p.left); }
+function spawnRescue(v) {
+  if (G.mode !== "multi" || G.exam || v.left || G.targets.some(t => t.kind === "rescue" && t.victim === v.pid)) return;
+  const alive = G.targets.filter(t => t.alive);
+  const word = G.decks.missile.draw({ words: new Set(alive.map(t => t.word)), first: new Set(alive.map(t => t.word[0])) });
+  emit({ e: "spawn", id: G.nextId++, kind: "rescue", word, victim: v.pid });
+}
+function resolveRescue(id, pid) {
+  const t = G.byId[id], p = player(pid);
+  if (!t || !t.alive || t.kind !== "rescue" || !p || !p.alive || t.victim === pid || t.done[pid]) return;
+  emit({ e: "rdone", id, pid });
+  checkRescues();
+}
+function checkRescues() {
+  const need = rescuers(); if (!need.length) return;
+  for (const t of G.targets.filter(x => x.kind === "rescue")) {
+    const v = player(t.victim);
+    if (!v || v.left || v.alive) { emit({ e: "rgone", id: t.id }); continue; }
+    if (!need.every(p => t.done[p.pid])) continue;
+    v.alive = true; v.hp = Math.max(1, Math.ceil(v.maxHp / 2)); v.shield = true;
+    v.assigned = Math.max(v.assigned, ...need.map(p => p.assigned)); // don't send them a pile of enemies to catch up
+    emit({ e: "revive", id: t.id, pid: v.pid, hp: v.hp, by: need.map(p => p.pid), pts: RESCUE_PTS });
+    emitPState(v);
+  }
+}
+function onRDone(ev) {
+  const t = G.byId[ev.id]; if (!t || t.kind !== "rescue") return;
+  t.done[ev.pid] = true;
+  if (ev.pid === G.myPid) { t.typed = 0; if (G.lock === t) G.lock = null; t.el.classList.remove("locked"); }
+  renderTag(t, true);
+}
+function onRevive(ev) {
+  const t = G.byId[ev.id], v = player(ev.pid);
+  if (t) { explode(targetPoint(t), 0x7dff8a, 70, 0.5, 10); removeTarget(t); }
+  for (const pid of ev.by || []) { const p = player(pid); if (p) p.score += ev.pts || 0; }
+  if (!v) return;
+  v.alive = true; v.hp = ev.hp; v.shield = true; v.mesh.visible = true; v.anim.victory = 1.6;
+  sfx("clear");
+  if (v.pid === G.myPid) { hideMsg(); floater(window.innerWidth / 2, 200, "YOU'RE BACK! Your teammates saved you", "#7dff8a"); }
+  else floater(window.innerWidth / 2, 200, `${v.nick} is back!` + ((ev.by || []).includes(G.myPid) ? ` +${ev.pts} for the rescue` : ""), v.color);
+  updateHud();
+}
+function rescueBeacon() {
+  const g = new THREE.Group();
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(2.3, 0.14, 8, 40), MODELS.GLOW(0x7dff8a, 0.85));
+  ring.rotation.x = Math.PI / 2; ring.position.y = 0.3; g.add(ring);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 2.1, 7, 20, 1, true), MODELS.GLOW(0x7dff8a, 0.16));
+  beam.position.y = 3.5; g.add(beam);
+  g.userData.top = 6; g.userData.ring = ring;
+  return g;
 }
 
 function doItem(pid, k) {
@@ -448,7 +514,7 @@ function doItem(pid, k) {
   if (G.phase !== "wave" && G.phase !== "boss") return;
   if (k === "shield" && p.shield) return;
   p.items[k]--;
-  if (k === "bomb") { emit({ e: "fx", pid, kind: "bomb" }); for (const t of G.targets.slice()) if (t.kind !== "boss" && (G.mode === "solo" || t.victim === pid)) resolveKill(t.id, pid, 0, "bomb"); }
+  if (k === "bomb") { emit({ e: "fx", pid, kind: "bomb" }); for (const t of G.targets.slice()) if (t.kind !== "boss" && t.kind !== "rescue" && (G.mode === "solo" || t.victim === pid)) resolveKill(t.id, pid, 0, "bomb"); }
   else if (k === "freeze") { p.freezeT = 5; emit({ e: "fx", pid, kind: "freeze" }); }
   else if (k === "shield") { p.shield = true; emit({ e: "fx", pid, kind: "shield" }); }
   emitPState(p);
@@ -460,7 +526,7 @@ function doSpecial(pid) {
   if (G.phase !== "wave" && G.phase !== "boss") return;
   const sp = p.mech.special;
   if (sp.type === "blast") {
-    const list = G.targets.filter(t => t.kind !== "boss" && (G.mode === "solo" || t.victim === pid)).sort((a, b) => b.progress - a.progress).slice(0, sp.n);
+    const list = G.targets.filter(t => t.kind !== "boss" && t.kind !== "rescue" && (G.mode === "solo" || t.victim === pid)).sort((a, b) => b.progress - a.progress).slice(0, sp.n);
     const ids = list.map(t => t.id);
     const bossDmg = G.boss && G.boss.enter >= 1 && list.length < sp.n ? Math.min(2, sp.n - list.length) : 0;
     emit({ e: "fx", pid, kind: "special", ids, boss: bossDmg > 0, secs: 0 });
@@ -491,8 +557,8 @@ function tickAuthority(dt) {
     if (G.stageKills >= killsGoal()) { if (enemies === 0) setPhase("bossIntro", 2.6); }
     else {
       G.spawnT -= dt;
-      const d = G.diff, n = nPlayers(), interval = d.spawn * stageFactor() / Math.pow(n, 0.6);
-      const minA = d.minActive + (n - 1), maxA = Math.round(d.maxActive * (1 + 0.6 * (n - 1)));
+      const d = G.diff, n = nPlayers(), interval = d.spawn * stageFactor() / Math.pow(n, 0.6) * (G.lines ? 5 : 1);
+      const minA = G.lines ? n : d.minActive + (n - 1), maxA = G.lines ? 2 + n : Math.round(d.maxActive * (1 + 0.6 * (n - 1)));
       const need = G.stageKills + enemies < killsGoal();
       const due = G.spawnT <= 0 || (enemies < minA && G.spawnT <= interval - 0.6);
       if (need && due && enemies < maxA) { spawnEnemy(); G.spawnT = interval; }
@@ -535,6 +601,11 @@ function update(dt) {
 
   const chest = new V3(0, 2.4, 0);
   for (const t of G.targets.slice()) {
+    if (t.kind === "rescue") { // stands over the downed teammate
+      const r = t.mesh.userData.ring; if (r) { r.rotation.z += dt * 2; r.scale.setScalar(1 + 0.08 * Math.sin(G.time * 5)); }
+      t.pos.copy(t.mesh.position).add(new V3(0, 6, 0));
+      continue;
+    }
     if (t.kind === "boss") {
       const b = G.boss; if (!b) continue;
       b.enter = Math.min(1, b.enter + dt / 2.5);
@@ -587,6 +658,7 @@ function update(dt) {
   if (G.shake > 0) G.shake = Math.max(0, G.shake - dt);
 
   // pending claims that never got an answer (network hiccup): unlock after 2 s
+  for (const t of G.targets) if (t.kind === "rescue" && t.sent && !t.done[G.myPid] && G.time - t.sentAt > 3) { t.sent = false; renderTag(t, true); }
   for (const t of G.targets) if (t.pending && G.time - t.pendingAt > 2) { t.pending = false; t.typed = 0; t.myShot = false; t.el.classList.remove("pending"); renderTag(t); }
 
   if (G.role === "client") { G.statsT -= dt; if (G.statsT <= 0) { G.statsT = 2; netSend({ r: "stats", wpm: Math.round(currentWpm() * 10) / 10, acc: currentAcc() }); } }
@@ -605,32 +677,40 @@ function update(dt) {
 /* =====================================================================
  *  TYPING (local player)
  * ===================================================================== */
-function threat(t) { return t.kind === "boss" ? 0.2 : t.progress + (t.victim === G.myPid ? 0.3 : 0); }
+function threat(t) { return t.kind === "boss" ? 0.2 : t.kind === "rescue" ? 0.95 : t.progress + (t.victim === G.myPid ? 0.3 : 0); } // a 🆘 word stays on top
+// sentences: a capital or a symbol needs Shift, so it counts as 2 key presses (US keyboard)
+const SHIFTED = /[A-Z~!@#$%^&*()_+{}|:"<>?]/;
+function keyWeight(ch) { return G.lines && SHIFTED.test(ch) ? 2 : 1; }
+function lineWeight(s) { let n = 0; for (const c of s) n += keyWeight(c); return n; }
 function handleChar(ch) {
   if (!G.running || G.over || G.paused) return;
-  if (G.exam && !/^[a-zA-Z]$/.test(ch)) return; // typing test: no special or items
-  if (ch === " ") return requestSpecial();
-  if (ch === "1") return requestItem("bomb");
-  if (ch === "2") return requestItem("freeze");
-  if (ch === "3") return requestItem("shield");
-  if (!/^[a-zA-Z]$/.test(ch)) return;
+  if (G.lines) ch = ch.replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"'); // phone "smart" quotes
+  const typable = G.lines ? /^[\x20-\x7e]$/ : /^[a-zA-Z]$/;
+  if (G.exam && !(typable.test(ch) && (G.lock || ch !== " "))) return; // typing test: no special or items
+  if (!(G.lines && G.lock)) { // while a sentence is locked, every key belongs to it
+    if (ch === " ") return requestSpecial();
+    if (ch === "1") return requestItem("bomb");
+    if (ch === "2") return requestItem("freeze");
+    if (ch === "3") return requestItem("shield");
+  }
+  if (!typable.test(ch)) return;
   if (G.phase !== "wave" && G.phase !== "boss") return;
   if (!G.me.alive) return;
-  ch = ch.toLowerCase();
-  G.keystrokes++;
+  if (!G.lines) ch = ch.toLowerCase();
   let t = G.lock;
   if (!t) {
-    const cands = G.targets.filter(x => x.alive && !x.pending && x.word[0] === ch);
-    if (!cands.length) { miss(null); return; }
+    const cands = G.targets.filter(x => x.alive && !x.pending && x.word[0] === ch && !(x.kind === "rescue" && (x.victim === G.myPid || x.sent || x.done[G.myPid])));
+    if (!cands.length) { G.keystrokes++; miss(null); return; }
     t = cands.reduce((a, b) => threat(b) > threat(a) ? b : a);
     G.lock = t; t.el.classList.add("locked");
   }
   if (t.word[t.typed] === ch) {
-    t.typed++; G.correct++; renderTag(t); sfx("key");
-    shootFx(G.me, t, false);
+    const w = keyWeight(ch);
+    G.keystrokes += w; t.typed++; G.correct += w; renderTag(t); sfx("key");
+    if (t.kind !== "rescue") shootFx(G.me, t, false);
     sendProg(t);
     if (t.typed >= t.word.length) completeWord(t);
-  } else miss(t);
+  } else { G.keystrokes++; miss(t); }
 }
 
 function sendProg(t) {
@@ -679,7 +759,7 @@ function miss(t) {
   if (sp && G.charge < sp.charge) G.charge = 0;
   sfx("err");
   if (t) {
-    G.mistakes[t.word] = (G.mistakes[t.word] || 0) + 1;
+    if (/^[a-z]+$/.test(t.word)) G.mistakes[t.word] = (G.mistakes[t.word] || 0) + 1;
     t.el.classList.remove("shake"); void t.el.offsetWidth; t.el.classList.add("shake");
   }
   updateHud();
@@ -693,7 +773,7 @@ function releaseLock() {
 
 const AWAKEN_AT = 20, AWAKE_MISSES = 3;
 function completeWord(t) {
-  if (G.exam) { G.examWords++; G.examLetters += t.word.length; }
+  if (G.exam) { G.examWords++; G.examLetters += lineWeight(t.word); }
   G.combo++; G.maxCombo = Math.max(G.maxCombo, G.combo);
   if (G.combo >= AWAKEN_AT && !G.awakened && G.me.mech.awaken) {
     G.awakened = true; G.awakeMiss = 0; sfx("awaken");
@@ -702,6 +782,11 @@ function completeWord(t) {
   comboCheck();
   const sp = G.me.mech.special;
   if (sp) G.charge = Math.min(sp.charge, G.charge + 1);
+  if (t.kind === "rescue") { // my part of the rescue is done; the host revives them when everyone has typed it
+    G.lock = null; t.el.classList.remove("locked"); t.typed = 0; t.sent = true; t.sentAt = G.time; renderTag(t, true); sfx("item");
+    if (isAuthority()) resolveRescue(t.id, G.myPid); else netSend({ r: "rescue", id: t.id });
+    updateHud(); return;
+  }
   shootFx(G.me, t, true); t.myShot = true;
   G.lock = null; t.el.classList.remove("locked");
   if (isAuthority()) {
@@ -746,13 +831,19 @@ function requestSpecial() {
  * ===================================================================== */
 function makeTag(t) {
   const el = document.createElement("div");
-  el.className = "tag" + (t.kind === "missile" ? " missile" : t.kind === "boss" ? " boss" : "") + (t.elite ? " elite" : "");
-  if (G.mode === "multi" && t.kind !== "boss") { const v = player(t.victim); if (v) el.style.borderLeft = `4px solid ${v.color}`; if (t.victim === G.myPid) el.classList.add("mine"); }
+  el.className = "tag" + (t.kind === "missile" ? " missile" : t.kind === "boss" ? " boss" : t.kind === "rescue" ? " rescue" : "") + (t.elite ? " elite" : "") + (/[^a-z]/.test(t.word) ? " line" : "");
+  if (G.mode === "multi" && t.kind !== "boss" && t.kind !== "rescue") { const v = player(t.victim); if (v) el.style.borderLeft = `4px solid ${v.color}`; if (t.victim === G.myPid) el.classList.add("mine"); }
   $("#labels").appendChild(el);
   t.el = el; renderTag(t, true);
 }
 function renderTag(t, remeasure) {
-  let html = `${t.elite ? "⭐ " : ""}<span class="done">${esc(t.word.slice(0, t.typed))}</span>${esc(t.word.slice(t.typed))}`;
+  const line = /[^a-z]/.test(t.word), rest = t.word.slice(t.typed); // a sentence shows where you are (spaces too)
+  let html = `${t.elite ? "⭐ " : ""}<span class="done">${esc(t.word.slice(0, t.typed))}</span>${line && t.typed ? `<span class="cur">${esc(rest.slice(0, 1))}</span>${esc(rest.slice(1))}` : esc(rest)}`;
+  if (t.kind === "rescue") {
+    const v = player(t.victim), mine = t.sent || t.done[G.myPid];
+    html = `🆘 ${mine ? `<span class="done">${esc(t.word)}</span> ✔` : html}<div class="rs">${esc(v ? (v.pid === G.myPid ? "Save YOU:" : `Save ${v.nick}:`) : "")} ${rescuers().map(p => `<span style="color:${p.color}">${t.done[p.pid] ? "✔" : "…"}${esc(p.nick)}</span>`).join(" ")}</div>`;
+    t.el.classList.toggle("rdone", !!mine);
+  }
   const others = Object.entries(t.others || {});
   if (others.length) html += `<div class="ob">${others.map(([pid, n]) => { const p = player(pid); return `<i style="background:${p ? p.color : "#fff"};width:${Math.round(100 * n / t.word.length)}%"></i>`; }).join("")}</div>`;
   t.el.innerHTML = html;
@@ -824,6 +915,7 @@ function updateHud() {
     b.classList.toggle("empty", me.items[k] <= 0);
   }
   if (G.boss) $("#boss-fill").style.width = (100 * G.boss.hp / G.boss.maxHp) + "%";
+  for (const t of G.targets) if (t.kind === "rescue" && t.el) renderTag(t);
   if (G.mode === "multi") {
     $("#mp-board").innerHTML = G.players.slice().sort((a, b) => b.score - a.score).map(p =>
       `<span class="mpb ${p.alive ? "" : "dead"} ${p.pid === G.myPid ? "me" : ""}" style="color:${p.color}">${esc(p.nick)} · ${p.score} ${p.alive ? "♥".repeat(Math.max(0, p.hp)) : (p.left ? "(left)" : "✖")}</span>`).join("");
@@ -894,7 +986,7 @@ function resume() { G.paused = false; $("#scr-pause").classList.remove("show"); 
  *  Awakening still happens (looks only).
  * ===================================================================== */
 const EXAM_ACTIVE = 4;
-function examSize(w) { return w.length <= 4 ? "short" : w.length <= 7 ? "mid" : "long"; }
+function examSize(w) { const L = G.lines ? [18, 30] : [4, 7]; return w.length <= L[0] ? "short" : w.length <= L[1] ? "mid" : "long"; }
 function examDraw(alive) {
   // the next test word whose first letter is not on screen (so the first key still picks one enemy)
   const q = G.exam.queue, first = new Set(alive.map(t => t.word[0])), used = new Set(alive.map(t => t.word));
@@ -907,14 +999,14 @@ function tickExam(dt) {
   if (G.phase !== "wave") return;
   G.spawnT -= dt;
   const enemies = G.targets.filter(t => t.kind === "enemy").length;
-  if (enemies < EXAM_ACTIVE && (G.spawnT <= 0 || enemies === 0)) { spawnEnemy(); G.spawnT = enemies < 2 ? 0.25 : 0.7; }
+  if (enemies < (G.lines ? 3 : EXAM_ACTIVE) && (G.spawnT <= 0 || enemies === 0)) { spawnEnemy(); G.spawnT = enemies < 2 ? 0.25 : 0.7; }
 }
 function startExamGame(exam) {
   const o = soloOptions();
-  Object.assign(o, { diff: "Normal", bank: "everyday", stages: 0, event: "", exam: Object.assign({ queue: exam.words.slice() }, exam) });
+  Object.assign(o, { diff: "Normal", bank: WORD_BANKS[exam.bank] ? exam.bank : "everyday", stages: 0, event: "", exam: Object.assign({ queue: exam.words.slice() }, exam) });
   startGame(o);
   G.phase = "intro"; G.phaseT = 3;
-  showMsg(exam.title || "TYPING TEST", "Type the words on the enemies · they wait for you");
+  showMsg(exam.title || "TYPING TEST", G.lines ? "Type each line exactly: capitals, spaces and symbols count · they wait for you" : "Type the words on the enemies · they wait for you");
 }
 /* correct keys = letters of finished words + one "space" per finished word (like the plain test) */
 function examStats() {

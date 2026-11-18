@@ -1005,6 +1005,8 @@ var TEST_DEFAULTS = [
   ['TestAttempts', '2', '新测验的预设次数（取最高分）。老师在网站开考时可以改'],
   ['TestWordBank', 'everyday', '新测验的预设词库 ID'],
   ['TestFullWPM', 'J1:40, J2:40, J3:45, S1:45, S2:45, S3:45', '各年段 Net WPM 达到多少拿满分（最低 40）'],
+  ['TestFullWPMLine', 'J1:35, J2:35, J3:40, S1:40, S2:40, S3:40', '句子测验（Sentences 词库）：各年段 Net WPM 达到多少拿满分；大写和符号要按 Shift，算 2 键'],
+  ['TestFullWPMCode', 'S1:30, S2:30, S3:30', '程式码测验（Code lines 词库，高二 C 语言）：Net WPM 达到多少拿满分'],
   ['TestPassAccuracy', '85', '准确率低于这个 %，该次分数减半'],
 ];
 // how-to note written next to the settings (column E of TestSettings)
@@ -1050,16 +1052,11 @@ function testConfig_() {
   if (!st) { setupTest_(); st = ss.getSheetByName(SHEET_TEST_SETTINGS); }
   var raw = {};
   st.getDataRange().getValues().forEach(function (r) { raw[String(r[0]).trim()] = String(r[1] == null ? '' : r[1]).trim(); });
-  var full = {};
-  String(raw.TestFullWPM || '').split(/[,，、;\n]+/).forEach(function (part) {
-    var m = part.trim().match(/^([A-Za-z0-9]+)\s*[:：=]\s*(\d+(?:\.\d+)?)$/);
-    if (m) full[m[1].toUpperCase()] = Math.max(40, Number(m[2]));
-  });
   var cfg = {
     minutes: clamp_(Number(raw.TestMinutes) || 5, 1, 15),
     attempts: clamp_(Math.round(Number(raw.TestAttempts) || 2), 1, 10),
     bank: String(raw.TestWordBank || '').trim() || 'everyday',
-    full: full,
+    full: testFullMap_(raw.TestFullWPM, 40), fullLine: testFullMap_(raw.TestFullWPMLine, 15), fullCode: testFullMap_(raw.TestFullWPMCode, 15),
     passAcc: clamp_(raw.TestPassAccuracy === '' || raw.TestPassAccuracy == null ? 85 : Number(raw.TestPassAccuracy) || 0, 0, 100),
   };
   cfg.tests = testRows_(ss).filter(function (t) { return t.status === 'open'; });
@@ -1080,12 +1077,26 @@ function testRows_(ss) {
   return out;
 }
 
-// full-marks Net WPM for a class: the longest matching prefix in TestFullWPM (J2 matches J205), at least 40
-function testFullWpm_(cls, cfg) {
+// 'J1:40, J2:40' -> { J1: 40, J2: 40 } (each value at least `floor`)
+function testFullMap_(s, floor) {
+  var full = {};
+  String(s || '').split(/[,，、;\n]+/).forEach(function (part) {
+    var m = part.trim().match(/^([A-Za-z0-9]+)\s*[:：=]\s*(\d+(?:\.\d+)?)$/);
+    if (m) full[m[1].toUpperCase()] = Math.max(floor, Number(m[2]));
+  });
+  return full;
+}
+// what a test bank is: 'word' (single words), 'line' (sentences, line_...) or 'code' (code lines, code_...)
+function testKind_(bank) { bank = String(bank || ''); return /^code_/.test(bank) ? 'code' : /^line_/.test(bank) ? 'line' : 'word'; }
+// full-marks Net WPM for a class: the longest matching prefix (J2 matches J205) in TestFullWPM (words, at least 40),
+// TestFullWPMLine (sentences, default 35) or TestFullWPMCode (code lines, default 30), by the test's bank
+function testFullWpm_(cls, cfg, bank) {
+  var kind = testKind_(bank), map = (kind === 'code' ? cfg.fullCode : kind === 'line' ? cfg.fullLine : cfg.full) || {};
+  var floor = kind === 'word' ? 40 : 15, dflt = kind === 'code' ? 30 : kind === 'line' ? 35 : 40;
   cls = String(cls || '').toUpperCase();
   var best = 0, len = -1;
-  for (var k in cfg.full) if (cls.indexOf(k) === 0 && k.length > len) { best = cfg.full[k]; len = k.length; }
-  return Math.max(40, best || 40);
+  for (var k in map) if (cls.indexOf(k) === 0 && k.length > len) { best = map[k]; len = k.length; }
+  return Math.max(floor, best || dflt);
 }
 
 function testScore_(net, acc, full, passAcc) {
@@ -1187,11 +1198,13 @@ function testInfo_(body) {
   var mineTests = testsFor_(found.data, cfg);
   out.allowed = mineTests.length > 0;
   out.full = testFullWpm_(found.data.cls, cfg);
+  out.fullWord = out.full; out.fullLine = testFullWpm_(found.data.cls, cfg, 'line_'); out.fullCode = testFullWpm_(found.data.cls, cfg, 'code_'); // for practice
   out.history = [];
   if (mineTests.length) {
     var test = mineTests[0], ss = testBook_();
     var ta = testAttempts_(ss), mine = testMine_(ta.values, test.code, email);
     testSweep_(ta.sh, mine);
+    out.full = testFullWpm_(found.data.cls, cfg, test.bank); out.kind = testKind_(test.bank);
     out.minutes = test.minutes; out.attempts = testAllowed_(test, testExtraMap_(ss, test.code), email);
     out.used = testUsed_(mine); out.history = testPublic_(mine);
     var b = testBestOf_(mine); out.best = b ? b.score : null;
@@ -1230,7 +1243,7 @@ function testStart_(body) {
       '', '', '', '', '', '', '', '']);
     mine.push({ id: id, n: n, status: 'started', start: now, minutes: test.minutes, score: null, net: 0, wpm: 0, acc: 0, game: GAME_TITLE });
     var res = { ok: true, attemptId: id, attemptNo: n, attempts: allowed, minutes: test.minutes, bank: test.bank, code: code,
-      full: testFullWpm_(p.cls, cfg), passAcc: cfg.passAcc };
+      full: testFullWpm_(p.cls, cfg, test.bank), passAcc: cfg.passAcc };
     if (reqKey) cache.put(reqKey, JSON.stringify(res), 900);
     return res;
   });
@@ -1251,8 +1264,8 @@ function testPing_(body) {
 }
 
 // scores an attempt over `minutes` and writes it (used by testFinish_ and by the teacher ending an attempt)
-function testScoreRow_(ss, t, ri, r, cfg, minutes, secs, correct, keys, words, status) {
-  var email = String(r[3]).toLowerCase(), full = testFullWpm_(r[4], cfg);
+function testScoreRow_(ss, t, ri, r, cfg, minutes, secs, correct, keys, words, status, bank) {
+  var email = String(r[3]).toLowerCase(), full = testFullWpm_(r[4], cfg, bank);
   var wpm = correct / 5 / minutes, acc = keys ? correct / keys * 100 : 0;
   if (wpm > 220) { status = 'rejected (too fast)'; wpm = 0; acc = 0; }
   var net = wpm * acc / 100, score = testScore_(net, acc, full, cfg.passAcc);
@@ -1277,14 +1290,14 @@ function testFinish_(body) {
   if (String(r[9]) !== 'started' && String(r[9]) !== 'not started') { // sent twice (network retry) or ended by the teacher: answer with what is saved
     var mine0 = testMine_(t.values, code, email), b0 = testBestOf_(mine0);
     return { ok: true, already: true, status: String(r[9]), attemptNo: Number(r[8]), attempts: allowed, wpm: Number(r[13]) || 0, accuracy: Number(r[14]) || 0,
-      net: Number(r[15]) || 0, score: Number(r[16]) || 0, best: b0 ? b0.score : null, full: testFullWpm_(r[4], cfg), history: testPublic_(mine0) };
+      net: Number(r[15]) || 0, score: Number(r[16]) || 0, best: b0 ? b0.score : null, full: testFullWpm_(r[4], cfg, test && test.bank), history: testPublic_(mine0) };
   }
   var secs = Math.round((Date.now() - Number(r[10])) / 1000), left = !!body.left;
   if (!left && secs < minutes * 60 - 20) return { ok: false, error: 'too_early' };
   var keys = clamp_(Math.round(Number(body.keys) || 0), 0, 200000);
   var correct = clamp_(Math.round(Number(body.correct) || 0), 0, keys);
   var words = clamp_(Math.round(Number(body.words) || 0), 0, 20000);
-  var s = testScoreRow_(ss, t, ri, r, cfg, minutes, secs, correct, keys, words, left ? 'left page' : 'finished');
+  var s = testScoreRow_(ss, t, ri, r, cfg, minutes, secs, correct, keys, words, left ? 'left page' : 'finished', test && test.bank);
   var b = testBestOf_(s.mine);
   return { ok: true, attemptNo: Number(r[8]), attempts: allowed, wpm: s.wpm, accuracy: s.acc, net: s.net, score: s.score, status: s.status,
     best: b ? b.score : null, full: s.full, passAcc: cfg.passAcc, history: testPublic_(s.mine) };
@@ -1341,7 +1354,7 @@ function tTests_(body) {
   var ss = testBook_(), cfg = testConfig_(), names = testTeacherNames_(ss);
   var list = testRows_(ss).filter(function (t) { return T.admin || t.teacher === T.email; }).reverse().map(function (t) { return testPublicTest_(t, names); });
   return { ok: true, admin: T.admin, email: T.email, tests: list, suggest: testNewCode_(ss),
-    defaults: { minutes: cfg.minutes, attempts: cfg.attempts, bank: cfg.bank }, full: cfg.full, passAcc: cfg.passAcc };
+    defaults: { minutes: cfg.minutes, attempts: cfg.attempts, bank: cfg.bank }, full: cfg.full, fullLine: cfg.fullLine, fullCode: cfg.fullCode, passAcc: cfg.passAcc };
 }
 
 function tCreate_(body) {
@@ -1408,7 +1421,7 @@ function tEnd_(body) {
   var minutesSet = Number(r[11]) || o.test.minutes, secs = Math.round((Date.now() - Number(r[10])) / 1000);
   var used = Math.max(0.1, Math.min(minutesSet, secs / 60));
   var keys = Math.max(0, Math.round(live.k || 0)), correct = Math.min(keys, Math.max(0, Math.round(live.c || 0)));
-  var s = testScoreRow_(ss, t, ri, r, testConfig_(), used, secs, correct, keys, Math.round(live.w || 0), 'ended by teacher');
+  var s = testScoreRow_(ss, t, ri, r, testConfig_(), used, secs, correct, keys, Math.round(live.w || 0), 'ended by teacher', o.test.bank);
   cache.put('kick:' + id, '1', 3600);
   return { ok: true, score: s.score, net: s.net };
 }
