@@ -265,5 +265,18 @@ vegetable vehicle vocabulary volunteer vulnerable
 wednesday whereabouts withdrawal` },
 };
 
+// 年段专用词库（学校与课室词 + 该年段电脑课用词；自动生成，要加字请改下面的 TECH_WORDS）
+const TECH_WORDS = {
+  microbit: `microbit makecode editor simulator download usb battery program block blocks code javascript python debug variable variables loop forever pause button pressed shake logo sensor accelerometer compass temperature light level radio group send receive string number value display led plot unplot brightness toggle image icon arrow clear music note tempo melody play tone pin analog digital pick random math logic boolean condition else then while repeat event handler function input output basic coordinate row column screen sound speaker`,
+  illustrator: `illustrator artboard layer layers vector anchor path pen tool brush pencil shape ellipse rectangle polygon gradient stroke fill swatch color pantone pathfinder unite subtract intersect exclude align distribute group ungroup transform rotate scale reflect shear warp envelope mask clipping opacity blend appearance effect shadow glow typography font kerning tracking leading outline trace symbol pattern grid guide ruler zoom selection direct lasso eraser scissors knife shaper blob smooth join offset logo poster icon illustration design canvas export print cmyk rgb resolution`,
+  excel: `excel workbook worksheet spreadsheet cell column row range formula function sum average count maximum minimum round lookup sort filter chart graph pivot table bar pie line percentage reference absolute relative merge wrap format currency decimal date text number header footer freeze validation conditional rule macro cursor sheet tab ribbon cut copy paste fill handle autosum rank concatenate`,
+  clang: `variable integer float double char string array pointer function return void main include header printf scanf loop for while break continue switch case default else struct enum compile compiler syntax error debug operator increment decrement modulus condition boolean logic declare initialize assign input output statement semicolon bracket brace library constant define program source code memory address file stdio algorithm recursion parameter argument global local sizeof`
+};
+const _school = window.WORD_BANKS.school.words;
+window.WORD_BANKS.grade_j2 = { name: "J2 · School + micro:bit", words: _school + " " + TECH_WORDS.microbit };
+window.WORD_BANKS.grade_j3 = { name: "J3 · School + Illustrator + Excel", words: _school + " " + TECH_WORDS.illustrator + " " + TECH_WORDS.excel };
+window.WORD_BANKS.grade_s1 = { name: "S1 · School + Excel", words: _school + " " + TECH_WORDS.excel };
+window.WORD_BANKS.grade_s2 = { name: "S2 · School + C language", words: _school + " " + TECH_WORDS.clang };
+
 // 全部混合（自动生成，不用改）
 window.WORD_BANKS.mix = { name: "All Words Mix", words: Object.values(window.WORD_BANKS).map(b => b.words).join(" ") };
