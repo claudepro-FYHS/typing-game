@@ -267,12 +267,12 @@ body.multi #mp-board { display: flex; }
 .tag.pending { opacity: .45; }
 .tag.iced { border-color: var(--freeze); color: var(--freeze); }
 /* 常用句子 sentences / code lines, and the 🆘 rescue word over a downed teammate */
-.tag.line { white-space: pre; font-size: 17px; }
-.tag .cur { color: #fff; background: rgba(255,204,51,.35); border-radius: 2px; box-shadow: 0 2px 0 var(--gold); }
+.tag.line { white-space: pre; font-size: 20px; }
+.tag .cur { display: inline-block; min-width: .45em; color: #fff; background: rgba(255,204,51,.35); border-radius: 2px; box-shadow: 0 2px 0 var(--gold); }
 .tag.rescue { border-color: #7dff8a; color: #e2ffe6; background: rgba(0,40,12,.88); box-shadow: 0 0 14px rgba(125,255,138,.6); text-align: center; }
 .tag.rescue.rdone { opacity: .55; }
 .tag .rs { font-family: var(--head); font-size: 11px; margin-top: 2px; white-space: nowrap; }
-@media (max-width: 600px) { .tag.line { font-size: 13px; } }
+@media (max-width: 600px) { .tag.line { font-size: 14px; } }
 .toast { position: fixed; left: 50%; top: 70px; transform: translateX(-50%); z-index: 50; background: rgba(10,16,36,.95); border: 1px solid var(--gold);
   color: var(--text); padding: 10px 18px; border-radius: 10px; font-size: 15px; box-shadow: 0 6px 24px rgba(0,0,0,.5); animation: toastin .3s; }
 @keyframes toastin { from { opacity: 0; transform: translate(-50%, -10px); } }
