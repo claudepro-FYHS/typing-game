@@ -115,7 +115,7 @@ node run.js e2e-festivals gallery   # just some of them
 |---|---|
 | `unit.js` | Login, tokens, profiles, nickname filter, scores, coin cap, shop, admins, gifts, XP/badges/streaks, events config, calendar rules, class codes, new school year, outside accounts |
 | `unit-test-mode.js` | Typing test backend: score formula, full-marks speed per form, attempts shared by two games through one test sheet, too early / left page / too fast, class limit, broken TestSheetId |
-| `e2e-exam.js` | Typing test: guest practice battle, hidden code / wrong code / code typed in small letters, enemies wait (no damage, 4 on screen), school test (1 minute), items and paste ignored, leaving the page, attempt limit, a normal mission afterwards, phone |
+| `e2e-exam.js` | Typing test: guest practice battle, hidden code / wrong code / code typed in small letters, enemies wait (no damage, 4 on screen), school test (1 minute), items and paste ignored, switching away keeps the attempt, no screen can open over a running test, closing the page ends it, attempt limit, a teacher's extra attempt appears by itself, a normal mission afterwards, phone |
 | `e2e-awaken.js` | Awakening of all 15 mechs in the hangar (`aw-<mech>.png`), awakening and combo reward in battle, 3 mistakes end it |
 | `e2e-classes.js` | Form + class pickers (phone), new school year, outside Google account, class battle groups, `AllowOtherAccounts = NO` |
 | `e2e-gameplay.js` | Guest hangar, paint shop, battlefields, badges, combo tiers, revenge words, festival boss, slow-mo, share card, class battle board |

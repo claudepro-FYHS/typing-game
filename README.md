@@ -342,7 +342,7 @@ The **📝 TYPING TEST** button (under MULTIPLAYER) opens a timed typing test pl
 | `TestTeachers` | Teachers who may open tests: email (A), name (B) |
 | `Tests` | Every test a teacher opened: code, teacher, classes, minutes, attempts, word bank, open / closed (written by the website) |
 | `TestExtra` | Extra (or fewer) attempts a teacher gave one student |
-| `TestAttempts` | One row per attempt: class, seat, name, status (started / finished / left page / ended by teacher), WPM, accuracy, Net WPM, score |
+| `TestAttempts` | One row per attempt: class, seat, name, status (started / finished / left page / ended by teacher / not started = the page never got going, not counted), WPM, accuracy, Net WPM, score |
 | `TestResults` | One row per student and test: attempts used, **best score** |
 
 How the test works: type the word on an enemy to destroy it (no SPACE needed: each finished word counts one extra key, like a space). A wrong key is a mistake. Everyone gets the same words in the same order for one test code. Students must type the code the teacher announces (never shown on the page; only the chosen classes can use it; a wrong code uses no attempt; 5 wrong in a row = a 10-minute wait).

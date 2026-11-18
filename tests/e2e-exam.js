@@ -117,14 +117,22 @@ async function startAttempt(p, code) {
   const net = run.correct / 5 * (run.correct / run.keys), expect = Math.round(net >= 40 ? 100 : net <= 10 ? net * 4 : 40 + 60 * (net - 10) / 30);
   check(res1.includes('TEST RESULT') && res1.includes(String(expect)), 'score on the page is ' + expect);
 
-  // attempt 2: leaving the page ends it
+  // attempt 2: switching away does not end it, nothing can open another screen on top, closing the page ends it
   await p.click('#exam-menu'); await sleep(1500); await p.click('#exam-back'); await sleep(500);
   await startAttempt(p, 'J2-K7');
   await typeTest(p, 5, 0);
   await p.evaluate(() => { Object.defineProperty(document, 'hidden', { value: true, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+  await sleep(1500);
+  await p.evaluate(() => { Object.defineProperty(document, 'hidden', { value: false, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+  await sleep(500);
+  check(await p.evaluate(`(${hook}).G.running && !EXAM.EX.run.over`) && (await text(p, 'body')).includes('clock kept running'), 'switching away does not end the attempt (warning shown)');
+  await p.evaluate(() => { showHangar(); goPlayHome(); EXAM.openExam(); showScreen('scr-result'); });
+  await sleep(500);
+  check(await p.evaluate(`(${hook}).G.running && !document.querySelector('.screen.show')`), 'during a test no other screen can open on top of the battle');
+  await p.screenshot({ path: OUT + 'x-test-guard.png' });
+  await p.evaluate(() => window.dispatchEvent(new Event('pagehide')));
   await sleep(2500);
-  await p.evaluate(() => { Object.defineProperty(document, 'hidden', { value: false, configurable: true }); });
-  check((await text(p, '#exam-card')).includes('LEFT THE PAGE') && !(await p.evaluate(`(${hook}).G.running`)), 'leaving the page ends the attempt and the battle');
+  check((await text(p, '#exam-card')).includes('LEFT THE PAGE') && !(await p.evaluate(`(${hook}).G.running`)), 'closing the page ends the attempt and the battle');
   await p.click('#exam-menu'); await sleep(1500);
   check(!(await p.$('#exam-start')), 'no start button after 2 attempts');
 
@@ -132,6 +140,9 @@ async function startAttempt(p, code) {
   await sleep(5500);
   await tch.click('[data-extra="exam1@foonyew.edu.my"][data-d="1"]'); await sleep(3000);
   check(/2 \/ 3/.test(await text(tch, '#exam-card')), 'the teacher gave one more attempt (2 / 3)');
+  let shown = false;
+  for (let i = 0; i < 15 && !shown; i++) { await sleep(1000); shown = await p.isVisible('#exam-start'); }
+  check(shown, "the extra attempt shows up on the student's page by itself");
   await p.click('#exam-back'); await sleep(500);
   await startAttempt(p, 'J2-K7');
   await typeTest(p, 4, 0);

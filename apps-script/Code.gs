@@ -221,15 +221,15 @@ function doPost(e) {
       case 'setTitle': return json_(withLock_(function () { return setTitle_(body); }));
       case 'teacher': return json_(teacher_(body));
       case 'testInfo': return json_(testInfo_(body));
-      case 'testStart': return json_(withLock_(function () { return testStart_(body); }));
-      case 'testFinish': return json_(withLock_(function () { return testFinish_(body); }));
+      case 'testStart': return json_(testStart_(body)); // locks only around counting + the new row
+      case 'testFinish': return json_(testFinish_(body)); // writes this attempt's own row: no lock needed
       case 'testPing': return json_(testPing_(body));
       case 'tTests': return json_(tTests_(body));
       case 'tMonitor': return json_(tMonitor_(body));
       case 'tCreate': return json_(withLock_(function () { return tCreate_(body); }));
-      case 'tUpdate': return json_(withLock_(function () { return tUpdate_(body); }));
-      case 'tExtra': return json_(withLock_(function () { return tExtra_(body); }));
-      case 'tEnd': return json_(withLock_(function () { return tEnd_(body); }));
+      case 'tUpdate': return json_(tUpdate_(body)); // teacher writes don't wait behind the students' lock
+      case 'tExtra': return json_(tExtra_(body));
+      case 'tEnd': return json_(tEnd_(body));
       case 'config': return json_(cachedConfig_());
       case 'leaderboard': return json_(getLeaderboard_());
     }
@@ -1127,6 +1127,25 @@ function testAttemptOf_(r, i, k) {
     score: r[16] === '' || r[16] == null ? null : Number(r[16]), game: String(r[7]) };
 }
 
+// attempts that count: not the ones whose page never got going (status 'not started', see testSweep_)
+function testUsed_(mine) { return mine.filter(function (a) { return a.status !== 'not started'; }).length; }
+
+// An attempt row whose page never sent a single ping (e.g. the START answer got lost in a network
+// retry, so the page never knew about it) is marked 'not started' after 2.5 minutes and no longer
+// counts. Pages ping right away and then every 10 s ('seen:' / 'live:' in the cache, kept 6 h).
+var TEST_GRACE_MS = 150000;
+function testSweep_(sh, mine) {
+  var now = Date.now(), cand = mine.filter(function (a) { return a.status === 'started' && now - a.start > TEST_GRACE_MS && now - a.start < 5 * 3600000; });
+  if (!cand.length) return;
+  var keys = []; cand.forEach(function (a) { keys.push('seen:' + a.id, 'live:' + a.id); });
+  var hit = CacheService.getScriptCache().getAll(keys);
+  cand.forEach(function (a) {
+    if (hit['seen:' + a.id] || hit['live:' + a.id]) return;
+    a.status = 'not started';
+    sh.getRange(a.row, 10).setValues([['not started']]);
+  });
+}
+
 function testBestOf_(mine) {
   var best = null;
   mine.forEach(function (a) { if (a.score != null && (!best || a.score > best.score || (a.score === best.score && a.net > best.net))) best = a; });
@@ -1147,7 +1166,7 @@ function testUpsertResult_(ss, code, email, p, mine) {
   var values = sh.getDataRange().getValues(), row = 0;
   for (var i = 1; i < values.length; i++) if (String(values[i][0]) === code && String(values[i][4]).toLowerCase() === email) { row = i + 1; break; }
   var b = testBestOf_(mine);
-  var vals = [code, p.cls, p.seat, p.name, email, mine.length, b ? b.score : 0, b ? b.net : '', b ? b.wpm : '', b ? b.acc : '',
+  var vals = [code, p.cls, p.seat, p.name, email, testUsed_(mine), b ? b.score : 0, b ? b.net : '', b ? b.wpm : '', b ? b.acc : '',
     b ? b.game : GAME_TITLE, new Date()];
   if (row) sh.getRange(row, 1, 1, vals.length).setValues([vals]); else sh.appendRow(vals);
 }
@@ -1171,20 +1190,26 @@ function testInfo_(body) {
   out.history = [];
   if (mineTests.length) {
     var test = mineTests[0], ss = testBook_();
-    var mine = testMine_(testAttempts_(ss).values, test.code, email);
+    var ta = testAttempts_(ss), mine = testMine_(ta.values, test.code, email);
+    testSweep_(ta.sh, mine);
     out.minutes = test.minutes; out.attempts = testAllowed_(test, testExtraMap_(ss, test.code), email);
-    out.used = mine.length; out.history = testPublic_(mine);
+    out.used = testUsed_(mine); out.history = testPublic_(mine);
     var b = testBestOf_(mine); out.best = b ? b.score : null;
   }
   return out;
 }
 
+// Only counting the attempts + adding the row is inside the lock, so a whole class pressing START
+// together doesn't queue for long. `req` = one id per START press: when the page's network retry
+// sends the same press again, it gets the same attempt back instead of a second one.
 function testStart_(body) {
   var email = checkToken_(body.token);
   if (!email) return { ok: false, error: 'session_expired' };
+  var cache = CacheService.getScriptCache(), req = String(body.req || '').slice(0, 40), reqKey = req ? 'tstart:' + email + ':' + req : '';
+  var again = reqKey && cache.get(reqKey); if (again) return JSON.parse(again);
   var cfg = testConfig_();
   if (!cfg.tests.length) return { ok: false, error: 'no_test' };
-  var cache = CacheService.getScriptCache(), triesKey = 'codetries:' + email, tries = Number(cache.get(triesKey)) || 0;
+  var triesKey = 'codetries:' + email, tries = Number(cache.get(triesKey)) || 0;
   if (tries >= TEST_CODE_TRIES) return { ok: false, error: 'too_many_codes' };
   var typed = normCode_(body.code), test = cfg.tests.filter(function (x) { return normCode_(x.code) === typed; })[0];
   if (!typed || !test) { cache.put(triesKey, String(tries + 1), 600); return { ok: false, error: 'wrong_code' }; }
@@ -1193,16 +1218,24 @@ function testStart_(body) {
   if (!found) return { ok: false, error: 'no_profile' };
   var p = found.data;
   if (!classOk_(p, test.classes)) return { ok: false, error: 'not_your_class' };
-  var ss = testBook_(), t = testAttempts_(ss), mine = testMine_(t.values, code, email);
-  var allowed = testAllowed_(test, testExtraMap_(ss, code), email);
-  if (mine.length >= allowed) return { ok: false, error: 'no_attempts', used: mine.length };
-  var id = Utilities.getUuid(), n = mine.length + 1, now = Date.now();
-  t.sh.appendRow([new Date(now), code, id, email, p.cls, p.seat, p.name, GAME_TITLE, n, 'started', now, test.minutes,
-    '', '', '', '', '', '', '', '']);
-  mine.push({ id: id, n: n, status: 'started', start: now, minutes: test.minutes, score: null, net: 0, wpm: 0, acc: 0, game: GAME_TITLE });
-  testUpsertResult_(ss, code, email, p, mine);
-  return { ok: true, attemptId: id, attemptNo: n, attempts: allowed, minutes: test.minutes, bank: test.bank, code: code,
-    full: testFullWpm_(p.cls, cfg), passAcc: cfg.passAcc };
+  var ss = testBook_(), allowed = testAllowed_(test, testExtraMap_(ss, code), email), mine = null;
+  var out = withLock_(function () {
+    var again2 = reqKey && cache.get(reqKey); if (again2) return JSON.parse(again2);
+    var t = testAttempts_(ss); mine = testMine_(t.values, code, email);
+    testSweep_(t.sh, mine);
+    var used = testUsed_(mine);
+    if (used >= allowed) return { ok: false, error: 'no_attempts', used: used };
+    var id = Utilities.getUuid(), n = used + 1, now = Date.now();
+    t.sh.appendRow([new Date(now), code, id, email, p.cls, p.seat, p.name, GAME_TITLE, n, 'started', now, test.minutes,
+      '', '', '', '', '', '', '', '']);
+    mine.push({ id: id, n: n, status: 'started', start: now, minutes: test.minutes, score: null, net: 0, wpm: 0, acc: 0, game: GAME_TITLE });
+    var res = { ok: true, attemptId: id, attemptNo: n, attempts: allowed, minutes: test.minutes, bank: test.bank, code: code,
+      full: testFullWpm_(p.cls, cfg), passAcc: cfg.passAcc };
+    if (reqKey) cache.put(reqKey, JSON.stringify(res), 900);
+    return res;
+  });
+  if (out.ok && mine) { try { testUpsertResult_(ss, code, email, p, mine); } catch (e) {} }
+  return out;
 }
 
 // every ~10 s during a test: live progress for the teacher's screen (cache only, no lock, no sheet write)
@@ -1211,8 +1244,9 @@ function testPing_(body) {
   if (!email) return { ok: false, error: 'session_expired' };
   var id = String(body.attemptId || ''); if (!id) return { ok: false, error: 'no_attempt' };
   var cache = CacheService.getScriptCache();
-  cache.put('live:' + id, JSON.stringify({ c: Math.max(0, Number(body.correct) || 0), k: Math.max(0, Number(body.keys) || 0),
-    w: Math.max(0, Number(body.words) || 0), t: Date.now() }), 1800);
+  var live = { c: Math.max(0, Number(body.correct) || 0), k: Math.max(0, Number(body.keys) || 0), w: Math.max(0, Number(body.words) || 0), t: Date.now() };
+  cache.put('live:' + id, JSON.stringify(live), 21600);
+  cache.put('seen:' + id, '1', 21600); // this page got going (testSweep_)
   return { ok: true, kicked: !!cache.get('kick:' + id) };
 }
 
@@ -1240,7 +1274,7 @@ function testFinish_(body) {
   var code = String(r[1]), cfg = testConfig_(), minutes = Number(r[11]) || cfg.minutes;
   var test = testRows_(ss).filter(function (x) { return x.code === code; })[0];
   var allowed = test ? testAllowed_(test, testExtraMap_(ss, code), email) : Number(r[8]) || 1;
-  if (String(r[9]) !== 'started') { // sent twice (network retry) or ended by the teacher: answer with what is saved
+  if (String(r[9]) !== 'started' && String(r[9]) !== 'not started') { // sent twice (network retry) or ended by the teacher: answer with what is saved
     var mine0 = testMine_(t.values, code, email), b0 = testBestOf_(mine0);
     return { ok: true, already: true, status: String(r[9]), attemptNo: Number(r[8]), attempts: allowed, wpm: Number(r[13]) || 0, accuracy: Number(r[14]) || 0,
       net: Number(r[15]) || 0, score: Number(r[16]) || 0, best: b0 ? b0.score : null, full: testFullWpm_(r[4], cfg), history: testPublic_(mine0) };
@@ -1383,7 +1417,7 @@ function tEnd_(body) {
 function tMonitor_(body) {
   var T = testTeacher_(body); if (T.error) return { ok: false, error: T.error };
   var ss = testBook_(), o = testOwned_(ss, T, body.code); if (o.error) return { ok: false, error: o.error };
-  var test = o.test, v = testAttempts_(ss).values, extra = testExtraMap_(ss, test.code), byEmail = {}, order = [], liveKeys = [];
+  var test = o.test, ta = testAttempts_(ss), v = ta.values, extra = testExtraMap_(ss, test.code), byEmail = {}, order = [], liveKeys = [];
   for (var i = 1; i < v.length; i++) {
     var r = v[i]; if (String(r[1]) !== test.code) continue;
     var email = String(r[3]).toLowerCase();
@@ -1391,12 +1425,12 @@ function tMonitor_(body) {
     var a = testAttemptOf_(r, i, byEmail[email].attempts.length);
     byEmail[email].cls = String(r[4]); byEmail[email].seat = String(r[5]); byEmail[email].name = String(r[6]);
     byEmail[email].attempts.push(a);
-    if (a.status === 'started') liveKeys.push('live:' + a.id);
   }
+  order.forEach(function (e) { testSweep_(ta.sh, byEmail[e].attempts); byEmail[e].attempts.forEach(function (a) { if (a.status === 'started') liveKeys.push('live:' + a.id); }); });
   var live = liveKeys.length ? CacheService.getScriptCache().getAll(liveKeys) : {}, now = Date.now();
   var students = order.map(function (e) {
     var s = byEmail[e], b = testBestOf_(s.attempts);
-    s.allowed = testAllowed_(test, extra, e); s.extra = extra[e] ? extra[e].n : 0;
+    s.allowed = testAllowed_(test, extra, e); s.used = testUsed_(s.attempts); s.extra = extra[e] ? extra[e].n : 0;
     s.best = b ? { score: b.score, net: b.net, wpm: b.wpm, acc: b.acc } : null;
     s.attempts = s.attempts.map(function (a) {
       var out = { id: a.id, n: a.n, status: a.status, score: a.score, net: a.net, wpm: a.wpm, acc: a.acc, game: a.game };

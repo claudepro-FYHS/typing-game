@@ -17,7 +17,16 @@
 (function () {
 "use strict";
 const PRACTICE_MIN = 1, PENDING_KEY = "typing_test_pending";
-const EX = { info: null, run: null, loading: false };
+const EX = { info: null, run: null, loading: false, starting: false, lastReq: null, menuTimer: null };
+const examBusy = () => !!(EX.run && !EX.run.over);
+
+/* While a test or practice runs nothing may open another screen on top of the battle
+   (a late server answer, a stray click…): the battle stays, the clock keeps running. */
+const showScreen0 = window.showScreen, showHangar0 = window.showHangar;
+window.showScreen = function () { if (examBusy()) return; return showScreen0.apply(this, arguments); };
+if (showHangar0) window.showHangar = function () { if (examBusy()) return; return showHangar0.apply(this, arguments); };
+// the START box can't be closed while the attempt is being started
+document.addEventListener("click", (e) => { if (EX.starting && (e.target.id === "modal" || e.target.closest("#btn-modal-close"))) { e.stopPropagation(); e.preventDefault(); } }, true);
 
 /* ---------- page parts (added by script so both games share this file) ---------- */
 const css = `
@@ -94,11 +103,11 @@ function estimateScore(net, acc, full, passAcc) {
 }
 
 /* ---------- menu ---------- */
-async function openExam() {
-  showScreen("scr-exam");
-  renderMenu();
+async function openExam(quiet) {
+  if (examBusy()) return;
+  if (!quiet) { showScreen("scr-exam"); renderMenu(); }
   if (isSchool()) {
-    EX.loading = true; renderMenu();
+    if (!quiet) { EX.loading = true; renderMenu(); }
     try {
       const r = await apiRetry({ action: "testInfo", token: S.session.token }, "POST", 20000, 3);
       EX.info = r && r.ok ? r : null;
@@ -111,6 +120,7 @@ async function openExam() {
 }
 
 function renderMenu() {
+  clearTimeout(EX.menuTimer);
   const I = EX.info || {}, full = I.full || 40, passAcc = I.passAcc == null ? 85 : I.passAcc;
   let status = "", canStart = false;
   if (!isSchool()) status = `<p>Sign in with your school Google account to take a test. Anyone can practise.</p>`;
@@ -125,13 +135,13 @@ function renderMenu() {
     canStart = left > 0;
     status = `<p>A test is open · ${I.minutes} minute${I.minutes > 1 ? "s" : ""} · ${I.attempts} attempt${I.attempts > 1 ? "s" : ""}, the best one counts.</p>
       <p>Attempts used: <b>${I.used || 0} / ${I.attempts}</b>${I.best != null ? ` · Best score: <b>${I.best}</b> / 100` : ""}</p>
-      ${left <= 0 ? `<p class="muted">You have used all your attempts.</p>` : `<div class="exam-code"><label for="exam-code"><b>Test code from your teacher:</b></label>
+      ${left <= 0 ? `<p class="muted">You have used all your attempts. If your teacher gives you one more, it shows up here by itself.</p>` : `<div class="exam-code"><label for="exam-code"><b>Test code from your teacher:</b></label>
         <input id="exam-code" maxlength="40" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE">
         <button class="btn primary" id="exam-start" style="flex:0 0 auto">START ATTEMPT ${(I.used || 0) + 1} ▶</button></div>`}`;
   }
   const hist = (I.history || []).length ? `<table class="exam-hist"><tr><th>Attempt</th><th>Net WPM</th><th>WPM</th><th>Accuracy</th><th>Score</th><th></th></tr>
     ${I.history.map(a => `<tr><td>${a.n}</td><td>${a.score == null ? "—" : a.net}</td><td>${a.score == null ? "—" : a.wpm}</td><td>${a.score == null ? "—" : a.acc + "%"}</td>
-    <td><b>${a.score == null ? "—" : a.score}</b></td><td class="muted small">${a.status === "finished" ? "" : esc(a.status === "started" ? "not finished" : a.status)}</td></tr>`).join("")}</table>` : "";
+    <td><b>${a.score == null ? "—" : a.score}</b></td><td class="muted small">${a.status === "finished" ? "" : esc(a.status === "started" ? "not finished" : a.status === "not started" ? "did not start (network) · not counted" : a.status)}</td></tr>`).join("")}</table>` : "";
   const teach = I.teacher ? `<div class="exam-box"><b>👩‍🏫 Teachers:</b> open a test for your classes, watch who is taking it and download the marks.
       <div style="margin-top:8px"><button class="btn gold" id="exam-teach" style="flex:0 0 auto">👩‍🏫 TEACHER CONSOLE 老师后台</button></div></div>` : "";
   card.innerHTML = `
@@ -145,7 +155,7 @@ function renderMenu() {
         <li>Everybody gets the same words in the same order. No boss, items or specials in a test.</li>
         <li>A wrong key counts as a mistake. Net WPM = typing speed × accuracy. Full marks at <b>${full}</b> Net WPM${full > 40 ? "" : " or more"}; 10 Net WPM = 40 points.</li>
         <li>Accuracy under ${passAcc}% halves the score of that attempt.</li>
-        <li>Don't leave the page: switching tabs or windows ends the attempt. Closing or reloading the page uses up the attempt.</li>
+        <li>Stay on this page: if you switch away, the clock keeps running. Closing or reloading the page ends the attempt.</li>
       </ul>
     </div>
     <div class="row" style="justify-content:flex-end;flex-wrap:wrap;gap:8px">
@@ -159,26 +169,42 @@ function renderMenu() {
     $("#exam-start").onclick = confirmStart;
     $("#exam-code").addEventListener("keydown", e => { if (e.key === "Enter") confirmStart(); });
   }
+  // all attempts used while the test is open: look again now and then, so a teacher's extra attempt shows up by itself
+  if (isSchool() && I.active && I.allowed && !canStart && !EX.loading)
+    EX.menuTimer = setTimeout(() => { if (S.currentScreen === "scr-exam" && !EX.run && !EX.starting && card.querySelector("#exam-practice")) openExam(true); }, 10000);
 }
 function focusGameTyper() { const t = $("#typer"); if (t) t.focus({ preventScroll: true }); } // inside a click, so phone keyboards open
 
 function confirmStart() {
+  if (EX.starting || examBusy() || $("#modal").classList.contains("show")) return;
   const I = EX.info, code = String(($("#exam-code") || {}).value || "").trim();
   if (!code) { toast("Type the test code your teacher gives you.", 4000); $("#exam-code").focus(); return; }
+  // one id per START press; a press that never got an answer is sent again with the same id, so the
+  // server hands back that attempt instead of using up another one
+  const L = EX.lastReq, req = L && L.code === code && Date.now() - L.t < 180000 ? L.req : Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  EX.lastReq = { code, req, t: L && L.req === req ? L.t : Date.now() };
   openModal(`<h2>START ATTEMPT ${(I.used || 0) + 1} OF ${I.attempts}?</h2>
     <p>The test takes <b>${I.minutes} minutes</b>. Once it starts, this attempt counts even if you close the page.</p>
-    <p>Switching to another tab or window ends the attempt.</p>`,
+    <p>Stay on this page until the time is up.</p>`,
     `<button class="btn primary extra" id="exam-go">START ▶</button>`);
   $("#exam-go").onclick = async () => {
+    if (EX.starting) return;
     focusGameTyper();
-    $("#exam-go").disabled = true; $("#exam-go").textContent = "STARTING…";
+    EX.starting = true;
+    $("#exam-go").disabled = true; $("#exam-go").textContent = "STARTING… please wait";
+    $("#btn-modal-close").style.visibility = "hidden";
     let r;
-    try { r = await apiRetry({ action: "testStart", token: S.session.token, code }, "POST", 30000, 4); } catch (e) { r = { ok: false, error: "network" }; }
+    try { r = await apiRetry({ action: "testStart", token: S.session.token, code, req }, "POST", 45000, 4); } catch (e) { r = { ok: false, error: "network" }; }
+    EX.starting = false;
+    $("#btn-modal-close").style.visibility = "";
     $("#btn-modal-close").click();
+    if (examBusy()) return; // something else is already running: never start a second battle
+    if (r && r.ok) EX.lastReq = null;
     if (!r || !r.ok) {
       const why = { wrong_code: "That is not the right test code. Check with your teacher.", too_many_codes: "Too many wrong codes. Wait a few minutes and ask your teacher.",
         no_attempts: "You have used all your attempts.", no_test: "The test is closed.",
-        not_your_class: "That code is for another class. Check the code for your class.", session_expired: "Your sign-in has expired. Sign in again.", busy: "The server is busy. Try again." }[r && r.error];
+        not_your_class: "That code is for another class. Check the code for your class.", session_expired: "Your sign-in has expired. Sign in again.",
+        busy: "The server is busy. Wait a moment and press START again (it won't use up an extra attempt).", network: "No answer from the server. Wait a moment and press START again (it won't use up an extra attempt)." }[r && r.error];
       toast(why || "Could not start the test. Try again.", 5000);
       return openExam();
     }
@@ -193,6 +219,7 @@ function clock(ms) { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.fl
 function begin(o) {
   EX.run = Object.assign({ correct: 0, keys: 0, errors: 0, words_done: 0, started: false, over: false, t0: 0 }, o);
   const R = EX.run;
+  if (R.real) ping(R);
   const label = o.real ? `TEST · ATTEMPT ${o.attemptNo}/${o.attempts}` : "PRACTICE";
   GAME_EXAM.startExamGame({
     words: o.words,
@@ -202,15 +229,20 @@ function begin(o) {
   });
 }
 
+// live progress for the teacher (also tells the server this attempt really started); the teacher may end the attempt
+function ping(R) {
+  if (R.pinging) return;
+  R.pinging = true; R.pingAt = performance.now();
+  const st = GAME_EXAM.examStats();
+  api({ action: "testPing", token: S.session.token, attemptId: R.attemptId, correct: st.correct, keys: st.keys, words: st.words }, "POST", 15000)
+    .then(r => { if (r && r.kicked && EX.run === R && !R.over) finish(true, false, true); }).catch(() => {})
+    .finally(() => { R.pinging = false; });
+}
+
 function loop() {
   const R = EX.run; if (!R || R.over) return;
   const left = timeLeft(R);
-  if (R.real && performance.now() - (R.pingAt || R.t0) > 10000) { // live progress for the teacher; the teacher may end the attempt
-    R.pingAt = performance.now();
-    const st = GAME_EXAM.examStats();
-    api({ action: "testPing", token: S.session.token, attemptId: R.attemptId, correct: st.correct, keys: st.keys, words: st.words }, "POST", 15000)
-      .then(r => { if (r && r.kicked && EX.run === R && !R.over) finish(true, false, true); }).catch(() => {});
-  }
+  if (R.real && performance.now() - (R.pingAt || 0) > 10000) ping(R);
   document.body.classList.toggle("exam-low", left <= 10000);
   try { updateHud(); } catch (e) {}
   if (left <= 0) return finish(false);
@@ -218,9 +250,11 @@ function loop() {
 }
 
 document.addEventListener("keydown", (e) => { const R = EX.run; if (e.key === "Escape" && R && !R.real && !R.over) finish(false, true); });
+// switching away does NOT end the attempt (an accidental key or click used to cost a whole attempt): the clock just keeps running
 document.addEventListener("visibilitychange", () => {
-  const R = EX.run;
-  if (document.hidden && R && !R.over && (R.started || R.real)) finish(true);
+  const R = EX.run; if (!R || R.over) return;
+  if (document.hidden) R.away = (R.away || 0) + 1;
+  else toast("⚠ Stay on this page during the test. The clock kept running while you were away.", 5000);
 });
 window.addEventListener("pagehide", () => { const R = EX.run; if (R && R.real && !R.over) finish(true); });
 
@@ -301,7 +335,7 @@ const TC_ERR = { need_classes: "Choose at least one class (e.g. J203, J207 or J2
   session_expired: "Your sign-in has expired. Sign out and sign in again.", busy: "The server is busy. Try again.", not_running: "That attempt has already ended." };
 const tcErr = r => (r && TC_ERR[r.error]) || "Could not save. Try again.";
 const tcCall = (body) => apiRetry(Object.assign({ token: S.session.token }, body), "POST", 30000, 3).catch(() => ({ ok: false, error: "network" }));
-function tcStop() { if (TC.timer) clearInterval(TC.timer); TC.timer = null; }
+function tcStop() { clearTimeout(TC.timer); TC.timer = null; TC.gen = (TC.gen || 0) + 1; }
 function tcRandomCode() { const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let c = ""; for (let i = 0; i < 5; i++) c += A[Math.floor(Math.random() * A.length)]; return /[A-Z]/.test(c) ? c.slice(0, 2) + "-" + c.slice(2) : tcRandomCode(); }
 function tcTime(ms) { if (!ms) return ""; const d = new Date(ms); return d.toLocaleDateString("en-GB") + " " + d.toTimeString().slice(0, 5); }
 
@@ -353,15 +387,22 @@ function renderTeachList() {
 async function openTestDetail(code) {
   tcStop(); TC.code = code; TC.data = null;
   card.innerHTML = `<h2>👩‍🏫 TEST ${esc(code)}</h2><p class="muted">Loading…</p>`;
-  await tcPoll();
-  TC.timer = setInterval(() => { if (S.currentScreen !== "scr-exam" || TC.code !== code) return tcStop(); tcPoll(); }, 5000);
+  const gen = TC.gen;
+  // one request at a time: the next one 5 s after the last answer (no pile-up when the server is slow)
+  const tick = async () => {
+    if (TC.gen !== gen) return;
+    if (S.currentScreen !== "scr-exam" || TC.code !== code) return tcStop();
+    await tcPoll();
+    if (TC.gen === gen) TC.timer = setTimeout(tick, 5000);
+  };
+  tick();
 }
 async function tcPoll() {
   const code = TC.code; if (!code) return;
   const r = await tcCall({ action: "tMonitor", code });
   if (TC.code !== code) return;
   if (!r.ok) { if (!TC.data) card.innerHTML = `<h2>TEST ${esc(code)}</h2><p class="err">${esc(tcErr(r))}</p><button class="btn ghost" id="tc-list">◀ ALL TESTS</button>`, $("#tc-list").onclick = openTeach; return; }
-  TC.data = r; renderTeachDetail();
+  TC.data = r; if (!TC.saving) renderTeachDetail();
 }
 function tcStatusText(a) {
   if (a.status === "started") {
@@ -369,7 +410,7 @@ function tcStatusText(a) {
     const left = Math.max(0, a.secsLeft || 0), clk = Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0");
     return `<span class="tc-live">⌨ typing · ${a.words == null ? "…" : a.words + " words · " + a.liveWpm + " WPM"} · ${clk} left</span>`;
   }
-  return { finished: "finished", "left page": '<span class="tc-warn">left the page</span>', "ended by teacher": '<span class="tc-warn">ended by teacher</span>', "rejected (too fast)": '<span class="tc-warn">rejected (too fast)</span>' }[a.status] || esc(a.status);
+  return { finished: "finished", "not started": '<span class="muted">did not start (network) · not counted</span>', "left page": '<span class="tc-warn">left the page</span>', "ended by teacher": '<span class="tc-warn">ended by teacher</span>', "rejected (too fast)": '<span class="tc-warn">rejected (too fast)</span>' }[a.status] || esc(a.status);
 }
 function renderTeachDetail() {
   const d = TC.data, t = d.test, list = d.students.slice().sort((a, b) => a.cls.localeCompare(b.cls) || Number(a.seat) - Number(b.seat));
@@ -377,7 +418,7 @@ function renderTeachDetail() {
   const rows = list.map(s => {
     const cur = s.attempts.find(a => a.status === "started" && !a.lost), last = s.attempts[s.attempts.length - 1];
     return `<tr><td>${esc(s.cls)}</td><td>${esc(s.seat)}</td><td>${esc(s.name)}</td>
-      <td style="white-space:nowrap"><b>${s.attempts.length} / ${s.allowed}</b> <button class="btn ghost" data-extra="${esc(s.email)}" data-d="-1" title="One attempt less">−</button><button class="btn ghost" data-extra="${esc(s.email)}" data-d="1" title="One more attempt">+</button></td>
+      <td style="white-space:nowrap"><b>${s.used == null ? s.attempts.length : s.used} / ${s.allowed}</b> <button class="btn ghost" data-extra="${esc(s.email)}" data-d="-1" title="One attempt less">−</button><button class="btn ghost" data-extra="${esc(s.email)}" data-d="1" title="One more attempt">+</button></td>
       <td class="small">${tcStatusText(cur || last)}</td>
       <td><b>${s.best ? s.best.score : "—"}</b>${s.best ? `<span class="muted small"> (${s.best.net} net)</span>` : ""}</td>
       <td>${cur ? `<button class="btn" data-end="${esc(cur.id)}" data-name="${esc(s.name)}">END ATTEMPT</button>` : ""}</td></tr>`;
@@ -407,7 +448,17 @@ function renderTeachDetail() {
   $("#tc-edit-classes").onclick = () => { const v = prompt("Classes (e.g. J203, J207 or J2):", t.classes); if (v != null) upd({ classes: v }, "Classes saved."); };
   $("#tc-edit-min").onclick = () => { const v = prompt("Minutes for new attempts (1–15):", t.minutes); if (v != null) upd({ minutes: v }, "Minutes saved (for new attempts)."); };
   $("#tc-report").onclick = () => tcReport(d);
-  $$("[data-extra]").forEach(b => b.onclick = async () => { const r = await tcCall({ action: "tExtra", code: t.code, email: b.dataset.extra, delta: Number(b.dataset.d) }); if (!r.ok) return toast(tcErr(r), 5000); tcPoll(); });
+  $$("[data-extra]").forEach(b => b.onclick = async () => {
+    const email = b.dataset.extra, s = d.students.find(x => x.email === email), btns = $$("[data-extra]").filter(x => x.dataset.extra === email);
+    btns.forEach(x => x.disabled = true); b.textContent = "…";
+    TC.saving = (TC.saving || 0) + 1;
+    const r = await tcCall({ action: "tExtra", code: t.code, email, delta: Number(b.dataset.d) });
+    TC.saving--;
+    if (!r.ok) { toast(tcErr(r), 5000); renderTeachDetail(); return; }
+    const cur = TC.data && TC.data.students.find(x => x.email === email); if (cur) cur.allowed = r.allowed;
+    toast(`Saved: ${s ? s.name : email} now has ${r.allowed} attempt${r.allowed === 1 ? "" : "s"}. Their page updates by itself.`, 3500);
+    renderTeachDetail();
+  });
   $$("[data-end]").forEach(b => b.onclick = async () => {
     if (!confirm(`End ${b.dataset.name}'s attempt now? It is scored with what was typed so far and counts as used.`)) return;
     const r = await tcCall({ action: "tEnd", code: t.code, attemptId: b.dataset.end });
@@ -424,7 +475,7 @@ function tcReport(d) {
   for (let i = 1; i <= maxN; i++) head.push(`Attempt ${i} score`, `Attempt ${i} Net WPM`, `Attempt ${i} status`);
   const rows = [head];
   for (const s of list) {
-    const row = [t.code, s.cls, s.seat, s.name, s.email, s.attempts.length, s.allowed, s.best ? s.best.score : "", s.best ? s.best.net : "", s.best ? s.best.wpm : "", s.best ? s.best.acc : ""];
+    const row = [t.code, s.cls, s.seat, s.name, s.email, s.used == null ? s.attempts.length : s.used, s.allowed, s.best ? s.best.score : "", s.best ? s.best.net : "", s.best ? s.best.wpm : "", s.best ? s.best.acc : ""];
     for (let i = 0; i < maxN; i++) { const a = s.attempts[i]; row.push(a ? (a.score == null ? "" : a.score) : "", a && a.score != null ? a.net : "", a ? a.status : ""); }
     rows.push(row);
   }

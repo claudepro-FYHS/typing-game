@@ -134,6 +134,29 @@ r = A.post({ action: 'testStart', token: s2, code: 'K7-W2' }); assert(r.ok, 'the
 assert.equal(A.post({ action: 'tUpdate', token: tw, code: 'K7-W2', classes: 'nope' }).error, 'bad_classes');
 console.log('students: code checked, extra attempts (one / everyone), teacher ends an attempt (counts, scored so far), monitor, close / reopen');
 
+// a network retry of the same START press gets the same attempt back (no double attempts)
+const s5 = login('stu5@foonyew.edu.my', 'J210', '20', 'Retry Kid', 'Retry');
+r = A.post({ action: 'testStart', token: s5, code: 'K7-W2', req: 'abc123' });
+const r2 = A.post({ action: 'testStart', token: s5, code: 'K7-W2', req: 'abc123' });
+assert(r.ok && r2.ok && r2.attemptId === r.attemptId && att().filter(x => x[3] === 'stu5@foonyew.edu.my').length === 1, 'same req = same attempt: ' + JSON.stringify([r, r2]));
+// an attempt whose page never pinged (the answer was lost) stops counting after 2.5 minutes
+const idLost = r.attemptId;
+rowOf(idLost)[10] -= 100 * 1000;
+r = A.post({ action: 'testInfo', token: s5 }); assert.equal(r.used, 1, 'still counts while it may be starting');
+rowOf(idLost)[10] -= 60 * 1000;
+r = A.post({ action: 'testInfo', token: s5 }); assert(r.used === 0 && rowOf(idLost)[9] === 'not started', 'a never-pinged attempt is not counted: ' + JSON.stringify(r));
+r = A.post({ action: 'testStart', token: s5, code: 'K7-W2', req: 'def456' }); const idReal = r.attemptId;
+assert(r.ok && r.attemptNo === 1, 'the next attempt is attempt 1 again: ' + JSON.stringify(r));
+A.post({ action: 'testPing', token: s5, attemptId: idReal, correct: 0, keys: 0, words: 0 });
+rowOf(idReal)[10] -= 200 * 1000;
+r = A.post({ action: 'testInfo', token: s5 }); assert(r.used === 1 && rowOf(idReal)[9] === 'started', 'a pinged attempt keeps counting (crash = teacher gives +1)');
+r = A.post({ action: 'tMonitor', token: tw, code: 'K7-W2' }); st = r.students.find(x => x.email === 'stu5@foonyew.edu.my');
+assert(st.used === 1 && st.attempts.length === 2 && st.attempts[0].status === 'not started', 'the monitor shows used = 1: ' + JSON.stringify(st));
+// a late finish for a 'not started' attempt (pings all failed) is still scored
+rowOf(idLost)[10] -= 300 * 1000;
+r = A.post({ action: 'testFinish', token: s5, attemptId: idLost, correct: 500, keys: 500, words: 90 }); assert(r.ok && !r.already && r.score > 0, 'late finish still scored: ' + JSON.stringify(r));
+console.log('START retries give the same attempt; never-started attempts do not count; late finish still scored');
+
 // config: is any test open?
 A.ctx.CacheService.getScriptCache().remove('config');
 assert.equal(JSON.parse(A.ctx.doGet({ parameter: { action: 'config' } }).content).test, true, 'config shows that a test is open');
