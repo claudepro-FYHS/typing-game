@@ -376,7 +376,7 @@ The forms and how many classes each has come from `ClassCounts` in the **Setting
 ## Privacy and security
 
 - The teacher password is stored only in your Google Sheet and is checked by Apps Script. **It is not in the public web page code.**
-- The leaderboard sends out only nicknames, WPM, accuracy and dates. **Real names and emails are never sent.**
+- The leaderboard sends out only nicknames, class and seat number, WPM, accuracy and dates. **Real names and emails are never sent.**
 - When a player signs in, Apps Script checks the sign-in token with Google, so nobody can submit scores pretending to be someone else, even if they know the backend URL. Only `@foonyew.edu.my` accounts can choose a class; other Google accounts are accepted only while `AllowOtherAccounts` is `YES`.
 - A student's sign-in is kept only in the current browser tab and ends when the browser is closed. School computers are shared, so please still remind students to click **Sign out** when they finish.
 - If a score can't be uploaded (for example, the network is down), the game still shows the result and keeps it on that computer. It is sent automatically the next time the game is opened, within 12 hours.

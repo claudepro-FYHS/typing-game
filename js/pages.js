@@ -11,16 +11,16 @@ async function loadLeaderboard(force) {
     try { lbData = await api({ action: "leaderboard" }, "GET", 15000); if (!lbData.ok) throw new Error(lbData.error); }
     catch (e) { lbData = null; body.innerHTML = '<p class="err">Can\'t load the leaderboard right now. Please try again later.</p>'; return; }
   }
-  $("#lb-note").textContent = `Only nicknames are shown. Ranked by typing speed (WPM); accuracy must be at least ${lbData.minAccuracy}%. The week starts on Monday.`;
+  $("#lb-note").textContent = `Shows nickname, class and seat no. Ranked by typing speed (WPM); accuracy must be at least ${lbData.minAccuracy}%. The week starts on Monday.`;
   renderLeaderboard();
 }
 function renderLeaderboard() {
   $$("#lb-seg button").forEach(b => b.classList.toggle("active", b.dataset.d === lbDiff));
   if (lbDiff === "Classes") return renderClassBattle();
-  $("#lb-note").textContent = `Only nicknames are shown. Ranked by typing speed (WPM); accuracy must be at least ${lbData.minAccuracy}%. The week starts on Monday.`;
+  $("#lb-note").textContent = `Shows nickname, class and seat no. Ranked by typing speed (WPM); accuracy must be at least ${lbData.minAccuracy}%. The week starts on Monday.`;
   const board = (lbData.boards || {})[lbDiff] || { week: [], all: [] };
-  const table = (title, rows) => `<div class="card"><h3>${title}</h3>${rows.length ? `<table><thead><tr><th>#</th><th>Nickname</th><th class="num">WPM</th><th class="num">Accuracy</th><th class="num">Date</th></tr></thead><tbody>` +
-    rows.map((r, i) => `<tr><td class="rank r${i + 1}">${i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</td><td class="nick">${esc(r.nickname)}${r.ext ? ' <span class="small" title="Player from outside the school">🌐</span>' : ""}${r.level ? ` <span class="lv small">LV${r.level}</span>` : ""}${r.title && BADGE_BY_ID[r.title] ? `<span class="title-chip">${BADGE_BY_ID[r.title].icon} ${esc(BADGE_BY_ID[r.title].name)}</span>` : ""}</td><td class="num"><b>${r.wpm}</b></td><td class="num">${r.acc}%</td><td class="num muted">${fmtDate(r.time)}</td></tr>`).join("") +
+  const table = (title, rows) => `<div class="card"><h3>${title}</h3>${rows.length ? `<table><thead><tr><th>#</th><th>Nickname</th><th>Class</th><th class="num">WPM</th><th class="num">Accuracy</th><th class="num lb-date">Date</th></tr></thead><tbody>` +
+    rows.map((r, i) => `<tr><td class="rank r${i + 1}">${i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1}</td><td class="nick">${esc(r.nickname)}${r.ext ? ' <span class="small" title="Player from outside the school">🌐</span>' : ""}${r.level ? ` <span class="lv small">LV${r.level}</span>` : ""}${r.title && BADGE_BY_ID[r.title] ? `<span class="title-chip">${BADGE_BY_ID[r.title].icon} ${esc(BADGE_BY_ID[r.title].name)}</span>` : ""}</td><td class="cls-seat">${r.cls ? esc(r.cls) + (r.seat ? "-" + esc(r.seat) : "") : ""}</td><td class="num"><b>${r.wpm}</b></td><td class="num">${r.acc}%</td><td class="num muted lb-date">${fmtDate(r.time)}</td></tr>`).join("") +
     `</tbody></table>` : '<p class="muted">No scores yet — be the first!</p>'}</div>`;
   $("#lb-body").innerHTML = table("THIS WEEK", board.week) + table("ALL TIME", board.all);
 }

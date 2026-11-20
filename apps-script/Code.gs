@@ -754,7 +754,7 @@ function playerMap_() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Leaderboard (only nicknames are sent out)                          */
+/*  Leaderboard (nickname + class/seat; never real names or emails)   */
 /* ------------------------------------------------------------------ */
 
 function weekStartMs_(nowMs) {
@@ -804,7 +804,9 @@ function topTen_(rows, players, s) {
     .map(function (r) {
       var p = players[r.email];
       return { nickname: (p && p.nickname) || r.nickname || 'Pilot', title: (p && p.title) || '', level: p ? levelFromXp_(p.xp) : 1,
-        wpm: r.wpm, acc: r.acc, time: r.time, ext: !isSchoolEmail_(r.email, s) };
+        wpm: r.wpm, acc: r.acc, time: r.time, ext: !isSchoolEmail_(r.email, s),
+        // 班级座号（Edwin 2026-11-20）：校外账号没有班级
+        cls: p && p.cls !== OTHER_CLASS ? p.cls : '', seat: p && p.cls !== OTHER_CLASS && p.cls !== STAFF_CLASS ? p.seat : '' };
     });
 }
 

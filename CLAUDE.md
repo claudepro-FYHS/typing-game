@@ -10,7 +10,7 @@ A 3D English typing game for Foon Yew High School (Malaysia). Students sign in w
 - UI text is **English** (students are Chinese/Malay speakers learning English). Word meanings are shown in **Chinese only** (no Malay).
 - Must work on school PCs and phones. Test at phone width (390px) too.
 - If the backend is down or a score upload fails, the game must still run and show the result.
-- Leaderboards show **nicknames only**. Nicknames are filtered for rude words in any language.
+- Leaderboards show **nickname + class-seat** (e.g. J205-12; Edwin's choice), never real names or emails. Nicknames are filtered for rude words in any language.
 - Ask the teacher before doing anything uncertain. The teacher merges PRs themself and sometimes edits `config.js` / `index.html` on `main`. Always rebase onto or restart from the latest `main`.
 
 ## Files

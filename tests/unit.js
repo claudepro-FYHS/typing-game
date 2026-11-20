@@ -49,6 +49,7 @@ const lb = get({ action: 'leaderboard' });
 assert(lb.ok); assert.equal(lb.boards.Normal.all.length, 1); assert.equal(lb.boards.Normal.all[0].wpm, 25); // 31 wpm has 70% acc -> excluded
 assert.equal(lb.boards.Hard.week[0].nickname, 'Zoomer');
 assert(!JSON.stringify(lb).includes('Tan') && !JSON.stringify(lb).includes('foonyew'), 'leaks personal info');
+assert(lb.boards.Normal.all[0].cls && lb.boards.Normal.all[0].seat, 'leaderboard shows class + seat');
 // teacher
 r = post({ action: 'teacher', password: 'nope' }); assert.equal(r.error, 'wrong_password');
 r = post({ action: 'teacher', password: 'pw123' }); assert(r.ok);

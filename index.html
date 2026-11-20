@@ -195,6 +195,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .rank { font-family: var(--head); width: 36px; }
 .rank.r1 { color: #ffd54a; } .rank.r2 { color: #d6dde8; } .rank.r3 { color: #e0955a; }
 .nick { font-weight: 700; }
+.cls-seat { white-space: nowrap; color: var(--muted); font-size: 13px; }
+@media (max-width: 600px) { .lb-date { display: none; } .lb-grid .card { padding-left: 10px; padding-right: 10px; } .lb-grid th, .lb-grid td { padding: 7px 4px; } .lb-grid th { letter-spacing: 0; } } /* phone: room for the class column */
 .table-wrap { overflow-x: auto; }
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 16px; }
 .bars { display: flex; flex-direction: column; gap: 6px; }
@@ -361,8 +363,8 @@ body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); bo
       <div class="field"><label for="pf-nick">Nickname (shown on the leaderboard)</label><input id="pf-nick" maxlength="12" placeholder="e.g. StarPilot7"></div>
       <div class="note">
         <b>Why do I need a nickname?</b><br>
-        The leaderboard can be seen by everyone, so it shows <b>only your nickname</b> — never your real name.
-        Your real name, class and seat number are sent only to your teacher.<br>
+        The leaderboard can be seen by everyone, so it shows your <b>nickname, class and seat number</b> — never your real name.
+        Your real name is sent only to your teacher.<br>
         Rules: 2–12 letters, numbers or Chinese characters (no spaces). Rude or offensive words in <b>any language</b> are not allowed,
         and your teacher can change a nickname at any time.
       </div>
@@ -545,7 +547,7 @@ body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); bo
       <div class="spacer"></div>
       <button class="btn ghost" id="btn-lb-refresh">REFRESH</button>
     </div>
-    <p class="small muted" id="lb-note">Only nicknames are shown. Ranked by typing speed (WPM).</p>
+    <p class="small muted" id="lb-note">Shows nickname, class and seat no. Ranked by typing speed (WPM).</p>
     <div id="lb-body" class="lb-grid"></div>
   </div>
 </section>
@@ -588,21 +590,21 @@ body.slowed #freeze-veil { display: block; background: rgba(120,255,170,.08); bo
 
 <!-- APP_VERSION: change it (here and in every ?v= below) whenever the game changes, so browsers
      load the new files instead of old copies from their cache. -->
-<script>window.APP_VERSION = "2026-11-18b";</script>
-<script src="config.js?v=2026-11-18b"></script>
-<script src="words.js?v=2026-11-18b"></script>
-<script src="sentences.js?v=2026-11-18b"></script>
-<script src="meanings.js?v=2026-11-18b"></script>
-<script src="lib/three.min.js?v=2026-11-18b"></script>
-<script src="models.js?v=2026-11-18b"></script>
-<script src="lib/peerjs.min.js?v=2026-11-18b"></script>
-<script src="js/core.js?v=2026-11-18b"></script>
-<script src="js/calendar.js?v=2026-11-18b"></script>
-<script src="js/progress.js?v=2026-11-18b"></script>
-<script src="js/scene.js?v=2026-11-18b"></script>
-<script src="js/game.js?v=2026-11-18b"></script>
-<script src="js/net.js?v=2026-11-18b"></script>
-<script src="js/exam.js?v=2026-11-18b"></script>
-<script src="js/pages.js?v=2026-11-18b"></script>
+<script>window.APP_VERSION = "2026-11-20a";</script>
+<script src="config.js?v=2026-11-20a"></script>
+<script src="words.js?v=2026-11-20a"></script>
+<script src="sentences.js?v=2026-11-20a"></script>
+<script src="meanings.js?v=2026-11-20a"></script>
+<script src="lib/three.min.js?v=2026-11-20a"></script>
+<script src="models.js?v=2026-11-20a"></script>
+<script src="lib/peerjs.min.js?v=2026-11-20a"></script>
+<script src="js/core.js?v=2026-11-20a"></script>
+<script src="js/calendar.js?v=2026-11-20a"></script>
+<script src="js/progress.js?v=2026-11-20a"></script>
+<script src="js/scene.js?v=2026-11-20a"></script>
+<script src="js/game.js?v=2026-11-20a"></script>
+<script src="js/net.js?v=2026-11-20a"></script>
+<script src="js/exam.js?v=2026-11-20a"></script>
+<script src="js/pages.js?v=2026-11-20a"></script>
 </body>
 </html>
