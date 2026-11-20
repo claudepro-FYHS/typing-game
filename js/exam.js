@@ -122,6 +122,7 @@ async function openExam(quiet) {
 
 function renderMenu() {
   clearTimeout(EX.menuTimer);
+  const prevBank = $("#exam-pbank"); if (prevBank) EX.pbank = prevBank.value; // a re-render (server answer, 10 s refresh) must keep the student's choice
   const I = EX.info || {}, full = I.full || 40, passAcc = I.passAcc == null ? 85 : I.passAcc;
   let status = "", canStart = false;
   if (!isSchool()) status = `<p>Sign in with your school Google account to take a test. Anyone can practise.</p>`;
@@ -162,10 +163,11 @@ function renderMenu() {
     </div>
     <div class="row" style="justify-content:flex-end;flex-wrap:wrap;gap:8px">
       <button class="btn ghost" id="exam-back" style="flex:0 0 auto">◀ BACK</button>
-      <select id="exam-pbank" title="What to practise" style="flex:0 0 auto;max-width:230px">${bankOptions(Object.entries(WORD_BANKS).filter(([k, b]) => k === "everyday" || b.lines), EX.pbank || "everyday")}</select>
+      <select id="exam-pbank" title="What to practise" style="flex:0 0 auto;max-width:230px">${bankOptions(Object.entries(WORD_BANKS).filter(([k]) => !/^event_/.test(k)), EX.pbank || "everyday")}</select>
       <button class="btn" id="exam-practice" style="flex:0 0 auto">PRACTICE (${PRACTICE_MIN} MIN)</button>
     </div>`;
   $("#exam-back").onclick = () => goPlayHome();
+  $("#exam-pbank").onchange = e => { EX.pbank = e.target.value; };
   if (I.teacher) $("#exam-teach").onclick = () => openTeach();
   $("#exam-practice").onclick = () => { focusGameTyper(); const pb = EX.pbank = $("#exam-pbank").value; begin({ real: false, minutes: PRACTICE_MIN, bank: pb, words: seededWords("practice" + Date.now(), pb, 400), full: pbFull(pb, full), passAcc }); };
   if (canStart) {
@@ -174,7 +176,7 @@ function renderMenu() {
   }
   // all attempts used while the test is open: look again now and then, so a teacher's extra attempt shows up by itself
   if (isSchool() && I.active && I.allowed && !canStart && !EX.loading)
-    EX.menuTimer = setTimeout(() => { if (S.currentScreen === "scr-exam" && !EX.run && !EX.starting && card.querySelector("#exam-practice")) openExam(true); }, 10000);
+    EX.menuTimer = setTimeout(() => { if (S.currentScreen === "scr-exam" && !EX.run && !EX.starting && card.querySelector("#exam-practice")) { if (document.activeElement && document.activeElement.id === "exam-pbank") return renderMenu(); openExam(true); } }, 10000);
 }
 // practice estimate: sentences and code lines have their own full-marks speed (TestFullWPMLine / TestFullWPMCode)
 function pbFull(bank, full) { const I = EX.info || {}; return /^code_/.test(bank) ? I.fullCode || 30 : /^line_/.test(bank) ? I.fullLine || 35 : I.fullWord || full; }
